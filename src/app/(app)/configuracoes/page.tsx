@@ -1,13 +1,41 @@
 export const dynamic = 'force-dynamic'
 
-export default function ConfiguracoesPage() {
+import { createClient } from '@/lib/supabase/server'
+import { UsuariosClient } from './_components/usuarios-client'
+
+type AppUser = {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'member'
+  active: boolean
+  created_at: string
+}
+
+async function getUsers(): Promise<AppUser[]> {
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('app_users')
+      .select('id, email, name, role, active, created_at')
+      .order('created_at', { ascending: true })
+    return data ?? []
+  } catch {
+    return []
+  }
+}
+
+export default async function ConfiguracoesPage() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://seu-dominio.com'
+  const users = await getUsers()
 
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Configurações</h2>
 
       <div className="space-y-6 max-w-2xl">
+        <UsuariosClient initialUsers={users} />
+
         <div className="bg-white rounded-xl border p-6">
           <h3 className="font-semibold text-gray-900 mb-1">Webhooks de Vendas</h3>
           <p className="text-sm text-gray-500 mb-4">
@@ -56,14 +84,6 @@ export default function ConfiguracoesPage() {
             <div>KIWIFY_WEBHOOK_SECRET=...</div>
             <div>TICTO_WEBHOOK_TOKEN=...</div>
           </div>
-        </div>
-
-        <div className="bg-white rounded-xl border p-6">
-          <h3 className="font-semibold text-gray-900 mb-1">Convidar usuários</h3>
-          <p className="text-sm text-gray-500">
-            Para adicionar membros da equipe, acesse o Supabase Studio → Authentication → Users → Invite user.
-            A conta deve usar o mesmo domínio configurado nas políticas RLS.
-          </p>
         </div>
       </div>
     </div>

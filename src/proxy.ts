@@ -1,9 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import crypto from 'crypto'
-
-function sign(value: string, secret: string) {
-  return crypto.createHmac('sha256', secret).update(value).digest('hex')
-}
+import { verifyToken } from '@/lib/auth'
 
 export async function proxy(request: NextRequest) {
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
@@ -13,10 +9,7 @@ export async function proxy(request: NextRequest) {
   if (isApiAuth || isApiWebhook) return NextResponse.next()
 
   const token = request.cookies.get('auth_token')?.value
-  const email = process.env.AUTH_EMAIL ?? ''
-  const secret = process.env.AUTH_SECRET ?? 'fallback-secret'
-  const expected = email ? sign(`${email}:authenticated`, secret) : ''
-  const authenticated = !!token && !!expected && token === expected
+  const authenticated = !!token && !!verifyToken(token)
 
   if (!authenticated && !isAuthPage) {
     const url = request.nextUrl.clone()
