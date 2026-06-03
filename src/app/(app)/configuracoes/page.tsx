@@ -48,12 +48,12 @@ export default async function ConfiguracoesPage() {
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={`${appUrl}/api/webhooks/kiwify`}
+                  value={`${appUrl}/api/webhooks/kiwify?token=SEU_TOKEN`}
                   className="flex-1 border rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono"
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                No painel Kiwify: Configurações → Webhooks → adicionar esta URL. Configure o mesmo valor de KIWIFY_WEBHOOK_SECRET.
+                Substitua SEU_TOKEN pelo valor de KIWIFY_WEBHOOK_SECRET configurado no EasyPanel.
               </p>
             </div>
 

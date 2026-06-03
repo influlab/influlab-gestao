@@ -6,20 +6,20 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // Verificação via query param ?token= (mesmo padrão do Ticto)
+  const expectedToken = process.env.KIWIFY_WEBHOOK_SECRET ?? ''
+  if (expectedToken) {
+    const token = request.nextUrl.searchParams.get('token') ?? ''
+    if (token !== expectedToken) {
+      return new Response('Unauthorized', { status: 401 })
+    }
+  }
+
   let payload: Record<string, unknown>
   try {
     payload = await request.json()
   } catch {
     return new Response('Invalid JSON', { status: 400 })
-  }
-
-  // Kiwify envia o token de segurança dentro do body como payload.signature
-  const secret = process.env.KIWIFY_WEBHOOK_SECRET ?? ''
-  if (secret) {
-    const signature = (payload.signature as string) ?? ''
-    if (signature !== secret) {
-      return new Response('Unauthorized', { status: 401 })
-    }
   }
 
   const order = payload.order as Record<string, unknown> | undefined
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   const customer = order.Customer as Record<string, unknown> | undefined
   const commissions = order.Commissions as Record<string, unknown> | undefined
 
-  // Data no formato "2026-06-03 14:30" — extrair só a data
+  // Data no formato "2026-06-03 14:30" → extrair só a data
   const rawDate = (order.approved_date as string) ?? (order.created_at as string) ?? null
   const date = rawDate ? rawDate.split(' ')[0] : new Date().toISOString().split('T')[0]
 
