@@ -25,18 +25,18 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
   const isApiWebhook = request.nextUrl.pathname.startsWith('/api/webhooks')
 
-  if (!user && !isAuthPage && !isApiWebhook) {
+  if (!session && !isAuthPage && !isApiWebhook) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (user && isAuthPage) {
+  if (session && isAuthPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
