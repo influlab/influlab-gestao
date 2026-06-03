@@ -6,15 +6,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  // Verificação via query param ?token= (mesmo padrão do Ticto)
-  const expectedToken = process.env.KIWIFY_WEBHOOK_SECRET ?? ''
-  if (expectedToken) {
-    const token = request.nextUrl.searchParams.get('token') ?? ''
-    if (token !== expectedToken) {
-      return new Response('Unauthorized', { status: 401 })
-    }
-  }
-
   let payload: Record<string, unknown>
   try {
     payload = await request.json()
@@ -23,7 +14,7 @@ export async function POST(request: NextRequest) {
   }
 
   const order = payload.order as Record<string, unknown> | undefined
-  if (!order) return new Response('No order', { status: 400 })
+  if (!order) return new Response('No order in payload', { status: 400 })
 
   const eventType = (order.webhook_event_type as string) ?? ''
   const orderStatus = (order.order_status as string) ?? ''
@@ -34,14 +25,13 @@ export async function POST(request: NextRequest) {
   } else if (eventType === 'order_refunded' || orderStatus === 'refunded') {
     status = 'refunded'
   } else {
-    return new Response('Ignored', { status: 200 })
+    return new Response(`Ignored: eventType=${eventType} orderStatus=${orderStatus}`, { status: 200 })
   }
 
   const product = order.Product as Record<string, unknown> | undefined
   const customer = order.Customer as Record<string, unknown> | undefined
   const commissions = order.Commissions as Record<string, unknown> | undefined
 
-  // Data no formato "2026-06-03 14:30" → extrair só a data
   const rawDate = (order.approved_date as string) ?? (order.created_at as string) ?? null
   const date = rawDate ? rawDate.split(' ')[0] : new Date().toISOString().split('T')[0]
 
@@ -63,6 +53,10 @@ export async function POST(request: NextRequest) {
     raw_payload: payload,
   })
 
-  if (error) return new Response('DB Error', { status: 500 })
+  if (error) {
+    console.error('[kiwify webhook] DB error:', JSON.stringify(error))
+    return new Response(`DB Error: ${error.message}`, { status: 500 })
+  }
+
   return new Response('OK', { status: 200 })
 }
