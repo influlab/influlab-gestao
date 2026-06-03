@@ -3,16 +3,17 @@ import { cookies } from 'next/headers'
 import { verifyToken, hashPassword } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
-async function requireAuth() {
+async function getSession() {
   const cookieStore = await cookies()
   const token = cookieStore.get('auth_token')?.value
+  const role = cookieStore.get('user_role')?.value ?? 'admin'
   if (!token || !verifyToken(token)) return null
-  return verifyToken(token)
+  return { email: verifyToken(token)!, role }
 }
 
 export async function GET() {
-  const email = await requireAuth()
-  if (!email) return Response.json({ error: 'Não autorizado' }, { status: 401 })
+  const session = await getSession()
+  if (!session) return Response.json({ error: 'Não autorizado' }, { status: 401 })
 
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -25,8 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const email = await requireAuth()
-  if (!email) return Response.json({ error: 'Não autorizado' }, { status: 401 })
+  const session = await getSession()
+  if (!session) return Response.json({ error: 'Não autorizado' }, { status: 401 })
+  if (session.role !== 'admin') return Response.json({ error: 'Acesso restrito a administradores' }, { status: 403 })
 
   const { name, email: newEmail, password, role } = await request.json()
 

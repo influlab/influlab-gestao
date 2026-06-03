@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { UserPlus, Trash2, ShieldCheck, User } from 'lucide-react'
+import { useIsAdmin } from '@/components/role-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,6 +32,7 @@ export function UsuariosClient({ initialUsers }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'member' })
+  const isAdmin = useIsAdmin()
 
   function resetForm() {
     setForm({ name: '', email: '', password: '', role: 'member' })
@@ -78,10 +80,12 @@ export function UsuariosClient({ initialUsers }: Props) {
           <h3 className="font-semibold text-gray-900">Usuários</h3>
           <p className="text-sm text-gray-500 mt-0.5">Gerencie quem tem acesso ao sistema</p>
         </div>
-        <Button size="sm" onClick={() => { resetForm(); setOpen(true) }}>
-          <UserPlus className="w-4 h-4 mr-1.5" />
-          Adicionar
-        </Button>
+        {isAdmin && (
+          <Button size="sm" onClick={() => { resetForm(); setOpen(true) }}>
+            <UserPlus className="w-4 h-4 mr-1.5" />
+            Adicionar
+          </Button>
+        )}
       </div>
 
       {users.length === 0 ? (
@@ -113,13 +117,15 @@ export function UsuariosClient({ initialUsers }: Props) {
                 }`}>
                   {u.role === 'admin' ? 'Admin' : 'Membro'}
                 </span>
-                <button
-                  onClick={() => handleDelete(u.id)}
-                  className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                  title="Remover usuário"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => handleDelete(u.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                    title="Remover usuário"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}

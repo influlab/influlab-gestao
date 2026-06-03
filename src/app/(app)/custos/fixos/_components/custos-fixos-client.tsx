@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatBRL, formatDate } from '@/lib/utils'
+import { useIsAdmin } from '@/components/role-context'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 
 type FixedCost = { id: string; name: string; description: string | null; amount: number; billing_day: number | null; category: string | null; start_date: string; end_date: string | null }
@@ -16,6 +17,7 @@ export function CustosFixosClient({ initialData }: { initialData: FixedCost[] })
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
+  const isAdmin = useIsAdmin()
 
   function openNew() { setEditing(null); setForm(emptyForm); setShowForm(true) }
   function openEdit(item: FixedCost) {
@@ -57,9 +59,11 @@ export function CustosFixosClient({ initialData }: { initialData: FixedCost[] })
           <h2 className="text-2xl font-bold text-gray-900">Custos Fixos</h2>
           <p className="text-sm text-gray-500 mt-0.5">Total mensal: <span className="font-semibold text-gray-800">{formatBRL(total)}</span></p>
         </div>
-        <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-          <Plus size={16} /> Novo custo fixo
-        </button>
+        {isAdmin && (
+          <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            <Plus size={16} /> Novo custo fixo
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -138,10 +142,12 @@ export function CustosFixosClient({ initialData }: { initialData: FixedCost[] })
                   })()}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => openEdit(item)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Pencil size={14} /></button>
-                    <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openEdit(item)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Pencil size={14} /></button>
+                      <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

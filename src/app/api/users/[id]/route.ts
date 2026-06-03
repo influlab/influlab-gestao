@@ -3,19 +3,21 @@ import { cookies } from 'next/headers'
 import { verifyToken } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
-async function requireAuth() {
+async function getSession() {
   const cookieStore = await cookies()
   const token = cookieStore.get('auth_token')?.value
-  if (!token) return null
-  return verifyToken(token)
+  const role = cookieStore.get('user_role')?.value ?? 'admin'
+  if (!token || !verifyToken(token)) return null
+  return { email: verifyToken(token)!, role }
 }
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const email = await requireAuth()
-  if (!email) return Response.json({ error: 'Não autorizado' }, { status: 401 })
+  const session = await getSession()
+  if (!session) return Response.json({ error: 'Não autorizado' }, { status: 401 })
+  if (session.role !== 'admin') return Response.json({ error: 'Acesso restrito a administradores' }, { status: 403 })
 
   const { id } = await params
 

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatBRL, formatDate } from '@/lib/utils'
+import { useIsAdmin } from '@/components/role-context'
 import { Plus, Trash2 } from 'lucide-react'
 
 type RevenueEntry = {
@@ -32,6 +33,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
+  const isAdmin = useIsAdmin()
 
   const filtered = filter === 'all' ? data : data.filter(x => x.platform === filter)
   const total = filtered.filter(x => x.status === 'approved').reduce((s, x) => s + (x.net_amount ?? x.gross_amount), 0)
@@ -65,9 +67,11 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
             {filtered.length} registro(s) · Líquido aprovado: <span className="font-semibold text-green-700">{formatBRL(total)}</span>
           </p>
         </div>
-        <button onClick={() => { setForm(emptyForm); setShowForm(true) }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-          <Plus size={16} /> Entrada manual
-        </button>
+        {isAdmin && (
+          <button onClick={() => { setForm(emptyForm); setShowForm(true) }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            <Plus size={16} /> Entrada manual
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 mb-6">
@@ -156,7 +160,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>
+                  {isAdmin && <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>}
                 </td>
               </tr>
             ))}
