@@ -3,7 +3,6 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -19,11 +18,16 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-      if (error) {
-        setError(`Erro: ${error.message}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error ?? 'Erro ao fazer login.')
         setLoading(false)
         return
       }

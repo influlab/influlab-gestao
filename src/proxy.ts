@@ -1,48 +1,36 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import crypto from 'crypto'
+
+function sign(value: string, secret: string) {
+  return crypto.createHmac('sha256', secret).update(value).digest('hex')
+}
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { session } } = await supabase.auth.getSession()
-
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
+  const isApiAuth = request.nextUrl.pathname.startsWith('/api/auth')
   const isApiWebhook = request.nextUrl.pathname.startsWith('/api/webhooks')
 
-  if (!session && !isAuthPage && !isApiWebhook) {
+  if (isApiAuth || isApiWebhook) return NextResponse.next()
+
+  const token = request.cookies.get('auth_token')?.value
+  const email = process.env.AUTH_EMAIL ?? ''
+  const secret = process.env.AUTH_SECRET ?? 'fallback-secret'
+  const expected = email ? sign(`${email}:authenticated`, secret) : ''
+  const authenticated = !!token && !!expected && token === expected
+
+  if (!authenticated && !isAuthPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (session && isAuthPage) {
+  if (authenticated && isAuthPage) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
-  return supabaseResponse
+  return NextResponse.next()
 }
 
 export const config = {
