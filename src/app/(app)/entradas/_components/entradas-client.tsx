@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatBRL, formatDate } from '@/lib/utils'
 import { useIsAdmin } from '@/components/role-context'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 
 type RevenueEntry = {
   id: string
@@ -29,6 +29,7 @@ const emptyForm = { platform: 'manual', product_name: '', gross_amount: '', net_
 export function EntradasClient({ initialData }: { initialData: RevenueEntry[] }) {
   const [data, setData] = useState(initialData)
   const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState<RevenueEntry | null>(null)
   const [filter, setFilter] = useState('all')
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
@@ -38,18 +39,51 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
   const filtered = filter === 'all' ? data : data.filter(x => x.platform === filter)
   const total = filtered.filter(x => x.status === 'approved').reduce((s, x) => s + (x.net_amount ?? x.gross_amount), 0)
 
+  function openNew() {
+    setEditing(null)
+    setForm(emptyForm)
+    setShowForm(true)
+  }
+
+  function openEdit(item: RevenueEntry) {
+    setEditing(item)
+    setForm({
+      platform: item.platform,
+      product_name: item.product_name ?? '',
+      gross_amount: item.gross_amount.toString(),
+      net_amount: item.net_amount?.toString() ?? '',
+      customer_name: item.customer_name ?? '',
+      customer_email: item.customer_email ?? '',
+      transaction_id: item.transaction_id ?? '',
+      date: item.date,
+      status: item.status,
+    })
+    setShowForm(true)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
+    e.preventDefault()
+    setLoading(true)
     const payload = {
-      platform: form.platform, product_name: form.product_name || null,
+      platform: form.platform,
+      product_name: form.product_name || null,
       gross_amount: parseFloat(form.gross_amount),
       net_amount: form.net_amount ? parseFloat(form.net_amount) : null,
-      customer_name: form.customer_name || null, customer_email: form.customer_email || null,
-      transaction_id: form.transaction_id || null, date: form.date, status: form.status,
+      customer_name: form.customer_name || null,
+      customer_email: form.customer_email || null,
+      transaction_id: form.transaction_id || null,
+      date: form.date,
+      status: form.status,
     }
-    const { data: c } = await supabase.from('revenue_entries').insert(payload).select().single()
-    if (c) setData(d => [c, ...d])
-    setShowForm(false); setLoading(false)
+    if (editing) {
+      const { data: u } = await supabase.from('revenue_entries').update(payload).eq('id', editing.id).select().single()
+      if (u) setData(d => d.map(x => x.id === editing.id ? u : x))
+    } else {
+      const { data: c } = await supabase.from('revenue_entries').insert(payload).select().single()
+      if (c) setData(d => [c, ...d])
+    }
+    setShowForm(false)
+    setLoading(false)
   }
 
   async function handleDelete(id: string) {
@@ -68,7 +102,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
           </p>
         </div>
         {isAdmin && (
-          <button onClick={() => { setForm(emptyForm); setShowForm(true) }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+          <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
             <Plus size={16} /> Entrada manual
           </button>
         )}
@@ -85,7 +119,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Nova entrada manual</h3>
+            <h3 className="text-lg font-semibold mb-4">{editing ? 'Editar entrada' : 'Nova entrada manual'}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -160,7 +194,12 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {isAdmin && <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>}
+                  {isAdmin && (
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openEdit(item)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Pencil size={14} /></button>
+                      <button onClick={() => handleDelete(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 size={14} /></button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
