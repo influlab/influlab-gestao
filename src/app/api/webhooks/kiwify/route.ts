@@ -89,10 +89,43 @@ export async function POST(request: NextRequest) {
   const product = order.Product as Record<string, unknown> | undefined
   const customer = order.Customer as Record<string, unknown> | undefined
   const commissions = order.Commissions as Record<string, unknown> | undefined
+  const tracking = order.TrackingParameters as Record<string, unknown> | undefined
 
   const rawDate = (order.approved_date as string) ?? (order.created_at as string) ?? null
   const date = rawDate ? rawDate.split(' ')[0] : new Date().toISOString().split('T')[0]
   const transactionId = order.order_id as string
+
+  // Cria produto/afiliado automaticamente quando ainda não existem (upsert por
+  // (platform, external_id), não sobrescreve default_origem_id/nickname/active
+  // já configurados manualmente, porque essas colunas não entram no upsert).
+  async function getOrCreateId(
+    table: 'produtos' | 'afiliados',
+    externalId: string | null | undefined,
+    extra: Record<string, unknown>
+  ): Promise<string | null> {
+    if (!externalId) return null
+    const { data, error } = await supabase
+      .from(table)
+      .upsert({ platform: 'kiwify', external_id: externalId, ...extra }, { onConflict: 'platform,external_id' })
+      .select('id')
+      .single()
+    if (error) {
+      console.error(`[kiwify webhook] erro ao criar/buscar ${table}:`, JSON.stringify(error))
+      return null
+    }
+    return data?.id ?? null
+  }
+
+  const commissionedStores = (commissions?.commissioned_stores as Array<Record<string, unknown>> | undefined) ?? []
+  const affiliateEntry = commissionedStores.find((s) => s.type === 'affiliate')
+
+  const productId = await getOrCreateId('produtos', product?.product_id as string | undefined, {
+    name: (product?.product_name as string) ?? null,
+  })
+  const affiliateId = await getOrCreateId('afiliados', affiliateEntry?.id as string | undefined, {
+    name: (affiliateEntry?.custom_name as string) ?? null,
+    email: (affiliateEntry?.email as string) ?? null,
+  })
 
   const revenueData = {
     platform: 'kiwify',
@@ -105,20 +138,24 @@ export async function POST(request: NextRequest) {
     date,
     status,
     raw_payload: payload,
+    utm_source: (tracking?.utm_source as string) ?? null,
+    utm_medium: (tracking?.utm_medium as string) ?? null,
+    utm_campaign: (tracking?.utm_campaign as string) ?? null,
+    utm_content: (tracking?.utm_content as string) ?? null,
+    utm_term: (tracking?.utm_term as string) ?? null,
+    src: (tracking?.src as string) ?? null,
+    sck: (tracking?.sck as string) ?? null,
+    product_id: productId,
+    affiliate_id: affiliateId,
+    fonte: 'webhook',
   }
 
   // Idempotência: o mesmo pedido pode chegar várias vezes (aprovado, depois
-  // reembolsado, ou reenviado pela Kiwify) — atualiza se já existir em vez de duplicar.
-  const { data: existing } = await supabase
+  // reembolsado, ou reenviado pela Kiwify) — upsert por transaction_id em vez
+  // de duplicar (trava garantida pela constraint unique (platform, transaction_id)).
+  const { error } = await supabase
     .from('revenue_entries')
-    .select('id')
-    .eq('platform', 'kiwify')
-    .eq('transaction_id', transactionId)
-    .maybeSingle()
-
-  const { error } = existing
-    ? await supabase.from('revenue_entries').update(revenueData).eq('id', existing.id)
-    : await supabase.from('revenue_entries').insert(revenueData)
+    .upsert(revenueData, { onConflict: 'platform,transaction_id' })
 
   if (error) {
     console.error('[kiwify webhook] DB error:', JSON.stringify(error))
