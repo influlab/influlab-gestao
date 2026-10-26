@@ -12,8 +12,8 @@ Dashboard financeiro da InfluencersLAB para gestão de receitas, custos e lucro.
 
 **Pendente de confirmação, primeira coisa a fazer numa sessão nova:**
 1. ~~Rodar `006_rls_anon_access.sql` no Supabase Studio~~ — feito e confirmado em 26/10/2026 (banco liberado pra `anon`).
-2. **Rodar o deploy no EasyPanel pra pegar o commit `40c6e65`** — corrige um segundo bug no botão "Adicionar" de nova origem (CSS, não banco: o input vazava pra coluna vizinha e roubava o clique). Diagnosticado e corrigido com automação de navegador direto em produção, mas o fix ainda está só no GitHub, não deployado.
-3. Depois do deploy, testar de novo o botão "+" em `/produtos` ou `/regras-utm` pra confirmar.
+2. ~~Deploy do commit `40c6e65`~~ (fix do CSS do botão "+") — **confirmado pelo usuário que já funciona em produção**.
+3. **Falta deploy do commit `f48c0a8`** — nova tela `/origens` (CRUD completo: editar nome, excluir com checagem de uso, nova origem). Código validado só com `tsc --noEmit` + `eslint` (build local segue quebrado, ver gotcha abaixo) — **ainda não visto rodando**, testar em `/origens` depois do deploy.
 4. Pedir um reenvio de webhook (ou esperar uma venda real) e conferir `webhook_logs`/`revenue_entries` pra confirmar que `origem_id` está sendo calculado e que o evento de carrinho abandonado não gera mais erro de assinatura (último deploy confirmado antes desta sessão foi o commit `875e538`).
 
 **Mistério resolvido nesta sessão**: por que as tabelas financeiras funcionavam com a auth custom mesmo com RLS escrito pra role `authenticated`? Porque elas têm uma policy extra pra role `anon` que nunca foi versionada em nenhuma migration (foi adicionada direto no Supabase Studio em algum momento antes desta sessão). As tabelas novas (`origens`, `produtos`, `afiliados`, `regras_utm`, `configuracoes`) só tinham a policy `authenticated`, copiada do padrão errado — por isso o botão de nova origem não funcionava. Migration `006_rls_anon_access.sql` alinha o comportamento. **Isso significa que, na prática, qualquer tabela do app aceita escrita da chave `anon` — que é a chave-demo pública (ver pendência crítica abaixo). O verdadeiro controle de acesso hoje é só de UI (`useIsAdmin`), não de banco.**
@@ -76,6 +76,7 @@ Dashboard financeiro da InfluencersLAB para gestão de receitas, custos e lucro.
 | `/custos/avulsos` | `variable_costs` | Custos pontuais |
 | `/assinaturas` | `subscriptions` | Assinaturas recorrentes |
 | `/prestadores` | `service_providers` | Prestadores de serviço |
+| `/origens` | `origens` | Catálogo de origens de tráfego — editar nome, excluir (bloqueado se em uso) |
 | `/produtos` | `produtos` | Mapeamento de origem padrão por produto (criados automaticamente pelo webhook) |
 | `/regras-utm` | `regras_utm` | Regras de origem por UTM + botão "Reprocessar origens" |
 | `/configuracoes` | — | Configurações |
@@ -364,6 +365,8 @@ Afiliado é identificado em `Commissions.commissioned_stores` pelo item com `typ
 **Bug encontrado e corrigido depois ("+" de nova origem não funcionava)**: as tabelas novas (`origens`, `produtos`, `afiliados`, `regras_utm`, `configuracoes`) só liberavam RLS pra role `authenticated`, mas o browser sempre fala com o banco como `anon` (ver "Auth custom vs. RLS" acima). Migration `006_rls_anon_access.sql` libera `anon` nessas tabelas, igualando ao comportamento (não documentado antes) das tabelas originais. **Rodada e confirmada em produção em 26/10/2026** (testado insert+delete com a chave `anon` nas 4 tabelas, sem erro de RLS).
 
 **Segundo bug no mesmo botão, encontrado depois da migration 006**: mesmo com o RLS corrigido, o botão "Adicionar" de `OrigemSelect` continuava sem funcionar — mas dessa vez era um bug de CSS, não de banco. Diagnosticado com automação de navegador direto em produção: o input da linha "nova origem" tinha `flex-1` sem `min-w-0`, então o flexbox não deixava ele encolher abaixo da largura mínima intrínseca do navegador, empurrando o botão "Adicionar" pra fora da coluna "Origem" e pra dentro da área da coluna vizinha "Prioridade" (`grid-cols-2`) — que intercepta o clique silenciosamente por vir depois no DOM (sem erro no console, sem requisição de rede, clique nunca chegava no botão de verdade). Corrigido no commit `40c6e65` (`min-w-0` no input + `shrink-0` no botão). **Ainda precisa de deploy no EasyPanel** (é código do app, não SQL).
+
+**Pedido do usuário depois da Etapa 4**: tela `/origens` com CRUD completo (até então só dava pra criar origem nova pelo "+" dentro de Produtos/Regras de UTM, não editar nome nem excluir). Implementado em `src/app/(app)/origens/`: mostra em quantos produtos/regras de UTM/vendas cada origem está em uso (3 queries agregadas no server component, sem FK constraint ao vivo) e bloqueia a exclusão com mensagem amigável quando em uso (`origem_id`/`default_origem_id` não têm `on delete cascade`, então o Postgres rejeitaria com erro de foreign key cru sem essa checagem). Commit `f48c0a8` — **só validado com tsc/eslint, não visto rodando ainda** (ver "Status atual" no topo).
 
 **Pendências que ainda restam do SPEC**: order bumps (falta um payload real de exemplo), importação de histórico (CSV), investimento em tráfego com origem vinculada/ROAS, e os cards de imposto mensal/trimestral no dashboard (hoje o dashboard ainda usa o `0.06` fixo antigo — `lib/metricas.ts` da Etapa 5 do plano original ainda não foi feito).
 
