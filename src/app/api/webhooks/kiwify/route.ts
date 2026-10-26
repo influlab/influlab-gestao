@@ -92,10 +92,11 @@ export async function POST(request: NextRequest) {
 
   const rawDate = (order.approved_date as string) ?? (order.created_at as string) ?? null
   const date = rawDate ? rawDate.split(' ')[0] : new Date().toISOString().split('T')[0]
+  const transactionId = order.order_id as string
 
-  const { error } = await supabase.from('revenue_entries').insert({
+  const revenueData = {
     platform: 'kiwify',
-    transaction_id: (order.order_id as string) ?? null,
+    transaction_id: transactionId,
     product_name: (product?.product_name as string) ?? null,
     gross_amount: (Number(commissions?.charge_amount) || 0) / 100,
     net_amount: commissions?.my_commission ? Number(commissions.my_commission) / 100 : null,
@@ -104,7 +105,20 @@ export async function POST(request: NextRequest) {
     date,
     status,
     raw_payload: payload,
-  })
+  }
+
+  // Idempotência: o mesmo pedido pode chegar várias vezes (aprovado, depois
+  // reembolsado, ou reenviado pela Kiwify) — atualiza se já existir em vez de duplicar.
+  const { data: existing } = await supabase
+    .from('revenue_entries')
+    .select('id')
+    .eq('platform', 'kiwify')
+    .eq('transaction_id', transactionId)
+    .maybeSingle()
+
+  const { error } = existing
+    ? await supabase.from('revenue_entries').update(revenueData).eq('id', existing.id)
+    : await supabase.from('revenue_entries').insert(revenueData)
 
   if (error) {
     console.error('[kiwify webhook] DB error:', JSON.stringify(error))
