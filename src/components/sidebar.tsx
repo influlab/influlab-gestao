@@ -14,6 +14,7 @@ import {
   Wallet,
   Package,
   Filter,
+  Tag,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
@@ -25,6 +26,7 @@ const navItems = [
   { href: '/custos/avulsos', label: 'Custos Avulsos', icon: Wallet },
   { href: '/assinaturas', label: 'Assinaturas', icon: CreditCard },
   { href: '/prestadores', label: 'Prestadores', icon: Users },
+  { href: '/origens', label: 'Origens', icon: Tag },
   { href: '/produtos', label: 'Produtos', icon: Package },
   { href: '/regras-utm', label: 'Regras de UTM', icon: Filter },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
