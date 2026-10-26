@@ -8,17 +8,20 @@ Dashboard financeiro da InfluencersLAB para gestão de receitas, custos e lucro.
 
 ## 🧭 Status atual (ler isto primeiro numa sessão nova)
 
-**Onde paramos:** terminamos a Etapa 4 do plano de expansão do SPEC (`dashboard-kiwify-spec.md`) — webhook Kiwify validando assinatura, com idempotência, capturando UTM/produto/afiliado e calculando `origem_id`; telas `/produtos` e `/regras-utm` no ar; mistério da RLS/auth custom resolvido (ver abaixo).
+**Onde paramos:** a Etapa 4 do plano de expansão do SPEC (`dashboard-kiwify-spec.md`) está concluída e validada em produção — webhook Kiwify validando assinatura, com idempotência, capturando UTM/produto/afiliado e calculando `origem_id`; telas `/produtos` e `/regras-utm` no ar. Depois disso, em resposta a feedback direto do usuário testando a tela, foram achados e corrigidos **dois bugs seguidos** no botão de nova origem (um de RLS, um de CSS — ver "Expansão" abaixo) e construída uma tela nova, **`/origens`**, com CRUD completo (editar nome, excluir com checagem de uso).
 
-**Pendente de confirmação, primeira coisa a fazer numa sessão nova:**
-1. ~~Rodar `006_rls_anon_access.sql` no Supabase Studio~~ — feito e confirmado em 26/10/2026 (banco liberado pra `anon`).
-2. ~~Deploy do commit `40c6e65`~~ (fix do CSS do botão "+") — **confirmado pelo usuário que já funciona em produção**.
-3. **Falta deploy do commit `f48c0a8`** — nova tela `/origens` (CRUD completo: editar nome, excluir com checagem de uso, nova origem). Código validado só com `tsc --noEmit` + `eslint` (build local segue quebrado, ver gotcha abaixo) — **ainda não visto rodando**, testar em `/origens` depois do deploy.
-4. Pedir um reenvio de webhook (ou esperar uma venda real) e conferir `webhook_logs`/`revenue_entries` pra confirmar que `origem_id` está sendo calculado e que o evento de carrinho abandonado não gera mais erro de assinatura (último deploy confirmado antes desta sessão foi o commit `875e538`).
+**Primeira coisa a fazer numa sessão nova:**
+1. **Confirmar o deploy do commit `f48c0a8`** (tela `/origens`) no EasyPanel — esse código só foi validado com `tsc --noEmit`/`eslint` localmente (build local quebrado, ver gotcha abaixo), nunca visto rodando. Testar `/origens`: listar, editar nome, excluir uma origem sem uso, tentar excluir uma em uso (deve bloquear com aviso, não estourar erro).
+2. **Perguntar ao usuário qual das pendências do SPEC encarar a seguir** — não há prioridade definida ainda entre: order bumps, importação de histórico (CSV), investimento em tráfego com ROAS, ou o motor de impostos (mensal 3% + reserva trimestral 3%) no dashboard. Ver "Pendências que ainda restam do SPEC" na seção "Expansão" abaixo pra detalhe de cada uma.
+3. Em algum momento, pedir um reenvio de webhook (ou esperar uma venda real) e conferir `webhook_logs`/`revenue_entries` pra reconfirmar que `origem_id` está sendo calculado em produção — a última confirmação direta disso foi antes dos dois bugs do botão de origem serem corrigidos.
 
-**Mistério resolvido nesta sessão**: por que as tabelas financeiras funcionavam com a auth custom mesmo com RLS escrito pra role `authenticated`? Porque elas têm uma policy extra pra role `anon` que nunca foi versionada em nenhuma migration (foi adicionada direto no Supabase Studio em algum momento antes desta sessão). As tabelas novas (`origens`, `produtos`, `afiliados`, `regras_utm`, `configuracoes`) só tinham a policy `authenticated`, copiada do padrão errado — por isso o botão de nova origem não funcionava. Migration `006_rls_anon_access.sql` alinha o comportamento. **Isso significa que, na prática, qualquer tabela do app aceita escrita da chave `anon` — que é a chave-demo pública (ver pendência crítica abaixo). O verdadeiro controle de acesso hoje é só de UI (`useIsAdmin`), não de banco.**
+**Mistério resolvido numa sessão anterior**: por que as tabelas financeiras funcionavam com a auth custom mesmo com RLS escrito pra role `authenticated`? Porque elas têm uma policy extra pra role `anon` que nunca foi versionada em nenhuma migration (foi adicionada direto no Supabase Studio em algum momento antes desta sessão). As tabelas novas (`origens`, `produtos`, `afiliados`, `regras_utm`, `configuracoes`) só tinham a policy `authenticated`, copiada do padrão errado — por isso o botão de nova origem não funcionava. Migration `006_rls_anon_access.sql` alinha o comportamento. **Isso significa que, na prática, qualquer tabela do app aceita escrita da chave `anon` — que é a chave-demo pública (ver pendência crítica abaixo). O verdadeiro controle de acesso hoje é só de UI (`useIsAdmin`), não de banco.**
 
-**Próxima etapa do plano** (ver seção "Expansão" abaixo para o plano completo): order bumps (falta payload real de exemplo), importação de histórico (CSV), investimento em tráfego com origem vinculada/ROAS, e o motor de impostos mensal (3%) + reserva trimestral (3%) no dashboard (hoje ainda usa um `0.06` fixo hardcoded em `(app)/page.tsx`).
+**Próxima fase do plano** (sem prioridade definida ainda — perguntar ao usuário):
+- **Order bumps**: falta um payload real de exemplo com order bump pra saber o formato exato; nenhum capturado em `webhook_logs` até agora.
+- **Importação de histórico via CSV** (decisão já tomada: só CSV, sem `.xlsx`/SheetJS).
+- **Investimento em tráfego com origem vinculada/ROAS**: reaproveitar `ad_costs` (decisão já tomada), ligar a uma `origem_id` e calcular ROAS por origem no dashboard.
+- **Motor de impostos no dashboard**: hoje `(app)/page.tsx` ainda usa um `0.06` fixo hardcoded; precisa usar a tabela `configuracoes` (já existe, já tem os campos `aliquota_imposto_mensal`/`aliquota_reserva_trimestral`/`base_imposto`) pra calcular imposto mensal (3%) + reserva trimestral (3%) de verdade, com cards novos no dashboard.
 
 **Gotchas operacionais importantes:**
 - **O deploy no EasyPanel NÃO é automático.** Está conectado ao GitHub (`influlab/influlab-gestao`, branch `master`), mas precisa disparar manualmente a cada push. Isso já causou ~5 meses de defasagem entre código e produção (descoberto nesta sessão). **Sempre pedir confirmação de deploy depois de um `git push`, e verificar em produção antes de considerar uma etapa concluída** — não basta o código compilar/passar lint.
@@ -274,7 +277,6 @@ Mesmo critério se aplica ao "Total mensal" em Custos Fixos.
 - Atualizar manualmente os `start_date` dos registros existentes no Supabase Studio para as datas de início reais (os registros criados antes da migration receberam `current_date` como default).
 - Avaliar se o campo `active` deve ser setado automaticamente para `false` quando `end_date < today`.
 - **CRÍTICO — rotacionar o JWT secret do Supabase self-hosted.** As chaves em `.env.local` (`NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) decodificam para `"iss": "supabase-demo"` — são as chaves de exemplo publicadas na documentação oficial de self-host do Supabase, nunca rotacionadas para esta instância. Qualquer pessoa que conheça o `JWT_SECRET` padrão do template pode forjar um token válido (inclusive `service_role`, que ignora RLS) para este banco. Agora que confirmamos que a chave `anon` sozinha já tem escrita liberada em **todas** as tabelas (ver "Auth custom vs. RLS" na seção Expansão), isso fica ainda mais sensível — rotacionar o `JWT_SECRET`, gerar novas chaves `anon`/`service_role` e atualizar `.env.local` + ambiente do EasyPanel. **Ainda não resolvido.**
-- ~~Rodar a migration `006_rls_anon_access.sql`~~ — feito e confirmado (ver "Status atual" no topo do arquivo).
 
 ---
 
@@ -368,7 +370,7 @@ Afiliado é identificado em `Commissions.commissioned_stores` pelo item com `typ
 
 **Pedido do usuário depois da Etapa 4**: tela `/origens` com CRUD completo (até então só dava pra criar origem nova pelo "+" dentro de Produtos/Regras de UTM, não editar nome nem excluir). Implementado em `src/app/(app)/origens/`: mostra em quantos produtos/regras de UTM/vendas cada origem está em uso (3 queries agregadas no server component, sem FK constraint ao vivo) e bloqueia a exclusão com mensagem amigável quando em uso (`origem_id`/`default_origem_id` não têm `on delete cascade`, então o Postgres rejeitaria com erro de foreign key cru sem essa checagem). Commit `f48c0a8` — **só validado com tsc/eslint, não visto rodando ainda** (ver "Status atual" no topo).
 
-**Pendências que ainda restam do SPEC**: order bumps (falta um payload real de exemplo), importação de histórico (CSV), investimento em tráfego com origem vinculada/ROAS, e os cards de imposto mensal/trimestral no dashboard (hoje o dashboard ainda usa o `0.06` fixo antigo — `lib/metricas.ts` da Etapa 5 do plano original ainda não foi feito).
+**Pendências que ainda restam do SPEC**: ver "Próxima fase do plano" na seção "Status atual" no topo do arquivo (order bumps, importação CSV, investimento em tráfego/ROAS, motor de impostos — nenhuma com prioridade definida ainda).
 
 ---
 
