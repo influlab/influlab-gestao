@@ -305,7 +305,16 @@ Colunas novas em `revenue_entries` (todas nullable ou com default, não quebram 
 
 Afiliado é identificado em `Commissions.commissioned_stores` pelo item com `type === 'affiliate'` (ignora `coproducer`/`producer`).
 
-**Ainda não implementado** (fica para a Etapa 4, que inclui as telas): `origem_id` continua null — depende de `calcularOrigem()` e de regras em `regras_utm`, que hoje está vazia. Mapeamento de origem por produto (`/produtos`) e CRUD de regras de UTM (`/regras-utm`) ainda não existem como tela — hoje só dá pra ver essas tabelas no Supabase Studio.
+### Etapa 4 — telas, `calcularOrigem()` e reprocessamento
+
+- `/produtos` e `/regras-utm`: CRUD completo (ver sidebar).
+- `src/lib/origem.ts` — `calcularOrigemId()` (pura, testável) + `loadOrigemContext()`, implementando a prioridade do SPEC: regra de UTM mais específica → mapeamento por produto → afiliado sem regra ("Afiliados") → "Não identificado".
+- O webhook Kiwify já calcula `origem_id` em toda venda nova.
+- Botão **"Reprocessar origens"** em `/regras-utm`: recalcula `origem_id` de todo o histórico de `revenue_entries` e avisa quantas vendas mudaram.
+
+**Bug encontrado e corrigido durante os testes em produção**: a mesma URL do webhook também recebe eventos de **carrinho abandonado** da Kiwify (`status: "abandoned"`, sem `order_id`/`Commissions`, aparentemente sem a mesma assinatura das vendas) — estavam sendo rejeitados com 401 repetidamente e logados como "assinatura inválida". Agora esses eventos são identificados antes da checagem de assinatura (não têm `order_id`) e respondidos com 200 sem exigir assinatura, já que nunca viram `revenue_entries`. Vendas de verdade continuam exigindo assinatura válida.
+
+**Pendências que ainda restam do SPEC**: order bumps (falta um payload real de exemplo), importação de histórico (CSV), investimento em tráfego com origem vinculada/ROAS, e os cards de imposto mensal/trimestral no dashboard (hoje o dashboard ainda usa o `0.06` fixo antigo — `lib/metricas.ts` da Etapa 5 do plano original ainda não foi feito).
 
 ---
 
