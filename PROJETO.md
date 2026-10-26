@@ -225,6 +225,61 @@ Mesmo critério se aplica ao "Total mensal" em Custos Fixos.
 - Testar o dashboard após restart do servidor (cache `.next` foi deletado).
 - Atualizar manualmente os `start_date` dos registros existentes no Supabase Studio para as datas de início reais (os registros criados antes da migration receberam `current_date` como default).
 - Avaliar se o campo `active` deve ser setado automaticamente para `false` quando `end_date < today`.
+- **CRÍTICO — rotacionar o JWT secret do Supabase self-hosted.** As chaves em `.env.local` (`NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) decodificam para `"iss": "supabase-demo"` — são as chaves de exemplo publicadas na documentação oficial de self-host do Supabase, nunca rotacionadas para esta instância. Qualquer pessoa que conheça o `JWT_SECRET` padrão do template pode forjar um token `service_role` válido para este banco e ler/escrever em qualquer tabela ignorando RLS. Precisa gerar um `JWT_SECRET` novo no servidor, gerar novas chaves `anon`/`service_role` a partir dele e atualizar `.env.local` e o ambiente do EasyPanel.
+- Rodar a migration `003_webhook_logs.sql` no Supabase Studio (ver seção abaixo).
+- Fazer uma compra/reembolso de teste na Kiwify para validar o fluxo completo do webhook com a assinatura reativada (não foi testado contra o banco de produção nesta sessão, só a rejeição de assinatura inválida/ausente).
+
+---
+
+## Expansão — Dashboard Kiwify Avançado (em andamento)
+
+Baseado em `dashboard-kiwify-spec.md` (roteiro originalmente escrito para um projeto novo com Drizzle/centavos — adaptado à stack e ao banco já existentes, sem recriar nada do zero).
+
+### Decisões tomadas
+
+- **Valores monetários continuam em reais (`numeric(12,2)`)** — não migrar para centavos. Risco de mudança de tipo em colunas com dados reais não compensa.
+- **Base do imposto = faturamento bruto aprovado** do período (padrão do SPEC).
+- **Data de referência da venda = data de aprovação** (`approved_date`), como já é hoje.
+- **Pix/boleto pendente continua sendo ignorado** até aprovar (só `status = 'approved'` entra nos totais).
+- **Importação de histórico será só CSV** (sem adicionar dependência de `.xlsx`/SheetJS).
+- **Investimento em tráfego reaproveita a tabela `ad_costs`** existente (ganha coluna de origem vinculada depois), em vez de criar `investimentos_trafego` paralela.
+- **Auth custom vs. RLS do Supabase**: o app usa autenticação própria (cookie HMAC, tabela `app_users`), não Supabase Auth — mas as policies RLS liberam tudo para a role `authenticated` do Supabase Auth, que o app nunca autentica no browser. Como as chaves são as chaves-demo padrão (ver pendência crítica acima), isso ainda não foi diagnosticado a fundo; vira uma etapa própria de diagnóstico antes de criar tabelas novas sensíveis (regras de UTM, configuração de imposto).
+
+### Webhook Kiwify — mecanismo de assinatura confirmado
+
+A Kiwify assina o webhook via **HMAC-SHA1 do corpo bruto da requisição**, usando o token configurado no painel (mesmo valor de `KIWIFY_WEBHOOK_SECRET`), enviado no parâmetro **`?signature=`** da URL (não é header, não é campo dentro do JSON). O corpo continua sendo `{"order": {...}}` — confirmado com um payload real de venda aprovada.
+
+Estrutura real do `Commissions` (payload de produção, venda com afiliado + coprodutor):
+
+```json
+"Commissions": {
+  "charge_amount": 8675,
+  "kiwify_fee": 244,
+  "my_commission": 3272,
+  "commissioned_stores": [
+    { "type": "affiliate", "value": "3373" },
+    { "type": "coproducer", "value": "101" },
+    { "type": "producer", "value": "3272" }
+  ]
+}
+```
+
+`my_commission` já é o valor líquido que cabe à conta dona da integração (bate com a entrada `commissioned_stores` do tipo correspondente) — não precisa recalcular. Order bump ainda não foi observado em nenhum payload real; o parser será ajustado quando aparecer um.
+
+### `webhook_logs` (nova tabela, migration `003_webhook_logs.sql`)
+
+Grava **todo** payload recebido nos webhooks (Kiwify/Ticto), antes de qualquer processamento — inclusive tentativas com assinatura inválida. Rodar a migration no Supabase Studio (SQL Editor), igual às anteriores.
+
+```sql
+webhook_logs (
+  id, source ('kiwify' | 'ticto'), payload jsonb, headers jsonb,
+  signature_valid boolean, processed boolean, error text, created_at
+)
+```
+
+### Etapa 0 — concluída
+
+`src/app/api/webhooks/kiwify/route.ts` agora valida `?signature=` (HMAC-SHA1 do corpo bruto com `KIWIFY_WEBHOOK_SECRET`) antes de processar, retorna `401` se inválida/ausente, e grava em `webhook_logs` em qualquer cenário (sucesso, erro de processamento ou assinatura inválida). Testado localmente: requisição sem assinatura e com assinatura errada retornam `401`. O caminho de assinatura válida não foi testado contra o banco de produção nesta sessão (gravaria um pedido de teste real em `revenue_entries`) — testar com uma compra real ou confirmar execução manual antes de considerar fechado.
 
 ---
 
