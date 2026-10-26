@@ -299,7 +299,13 @@ Tabelas novas (todas com RLS `authenticated_full_access`, seguindo o padrão das
 
 Colunas novas em `revenue_entries` (todas nullable ou com default, não quebram nada existente): `utm_source/medium/campaign/content/term`, `src`, `sck`, `affiliate_id`, `product_id`, `order_item_type` (`principal`/`orderbump`, default `principal`), `parent_order_id`, `origem_id`, `fonte` (`webhook`/`importacao`/`manual`, default `manual` — registros antigos ficam como `manual` por aproximação histórica).
 
-Ainda **não** implementado nesta etapa (fica para a próxima): o webhook não preenche essas colunas novas ainda (UTM, afiliado, produto automático, `fonte='webhook'`), e não existe `calcularOrigem()` nem as telas de Produtos/Regras de UTM.
+### Etapa 2 — webhook conectado ao modelo novo
+
+`src/app/api/webhooks/kiwify/route.ts` agora: captura `TrackingParameters` (UTM/`src`/`sck`) em `revenue_entries`; cria `produtos`/`afiliados` automaticamente via upsert em `(platform, external_id)` quando aparecem pela primeira vez (sem sobrescrever `default_origem_id`/`nickname`/`active` configurados manualmente depois); marca `fonte='webhook'`; e a idempotência passou a usar `upsert` de verdade via a constraint `unique (platform, transaction_id)` (sem mais select-then-insert manual).
+
+Afiliado é identificado em `Commissions.commissioned_stores` pelo item com `type === 'affiliate'` (ignora `coproducer`/`producer`).
+
+**Ainda não implementado** (fica para a Etapa 4, que inclui as telas): `origem_id` continua null — depende de `calcularOrigem()` e de regras em `regras_utm`, que hoje está vazia. Mapeamento de origem por produto (`/produtos`) e CRUD de regras de UTM (`/regras-utm`) ainda não existem como tela — hoje só dá pra ver essas tabelas no Supabase Studio.
 
 ---
 
