@@ -79,13 +79,13 @@ export function OrigemSelect({
               if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
             }}
             placeholder="Nome da nova origem (ex.: Kwai Ads)"
-            className="flex-1 border rounded-lg px-3 py-2 text-sm"
+            className="flex-1 min-w-0 border rounded-lg px-3 py-2 text-sm"
           />
           <button
             type="button"
             disabled={saving}
             onClick={handleAdd}
-            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="shrink-0 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {saving ? '...' : 'Adicionar'}
           </button>
