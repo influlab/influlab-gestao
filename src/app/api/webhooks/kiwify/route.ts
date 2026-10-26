@@ -43,15 +43,10 @@ export async function POST(request: NextRequest) {
       headers: Object.fromEntries(request.headers),
       signature_valid: signatureValid,
       processed: false,
-      error: signatureValid ? null : 'Assinatura inválida ou ausente',
+      error: null,
     })
     .select('id')
     .single()
-
-  if (!signatureValid) {
-    console.error('[kiwify webhook] Assinatura inválida')
-    return new Response('Unauthorized', { status: 401 })
-  }
 
   async function finish(response: Response, error?: string) {
     if (logRow?.id) {
@@ -69,9 +64,18 @@ export async function POST(request: NextRequest) {
 
   // O corpo do webhook da Kiwify É o próprio pedido (order_id, Product, Customer,
   // Commissions etc. na raiz) — não existe um campo "order" envolvendo tudo.
+  // A mesma URL também recebe outros tipos de evento sem relação com vendas
+  // (ex.: carrinho abandonado, status "abandoned", sem order_id/Commissions) —
+  // esses não exigem assinatura válida porque nunca são processados.
   const order = payload
-  if (!order.order_id) {
-    return finish(new Response('Payload sem order_id', { status: 400 }), 'Payload sem order_id')
+  const isOrderEvent = typeof order.order_id === 'string' && order.order_id.length > 0
+  if (!isOrderEvent) {
+    return finish(new Response('Ignored: evento sem order_id (não é uma venda)', { status: 200 }))
+  }
+
+  if (!signatureValid) {
+    console.error('[kiwify webhook] Assinatura inválida')
+    return finish(new Response('Unauthorized', { status: 401 }), 'Assinatura inválida ou ausente')
   }
 
   const eventType = (order.webhook_event_type as string) ?? ''
