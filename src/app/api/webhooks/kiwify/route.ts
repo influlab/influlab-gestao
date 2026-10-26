@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
+import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
 
 export async function GET() {
   return new Response('OK', { status: 200 })
@@ -131,6 +132,18 @@ export async function POST(request: NextRequest) {
     email: (affiliateEntry?.email as string) ?? null,
   })
 
+  const tracking_ = {
+    utm_source: (tracking?.utm_source as string) ?? null,
+    utm_medium: (tracking?.utm_medium as string) ?? null,
+    utm_campaign: (tracking?.utm_campaign as string) ?? null,
+    utm_content: (tracking?.utm_content as string) ?? null,
+    utm_term: (tracking?.utm_term as string) ?? null,
+    src: (tracking?.src as string) ?? null,
+    sck: (tracking?.sck as string) ?? null,
+  }
+  const origemContext = await loadOrigemContext(supabase)
+  const origemId = calcularOrigemId(tracking_, productId, affiliateId, origemContext)
+
   const revenueData = {
     platform: 'kiwify',
     transaction_id: transactionId,
@@ -142,15 +155,10 @@ export async function POST(request: NextRequest) {
     date,
     status,
     raw_payload: payload,
-    utm_source: (tracking?.utm_source as string) ?? null,
-    utm_medium: (tracking?.utm_medium as string) ?? null,
-    utm_campaign: (tracking?.utm_campaign as string) ?? null,
-    utm_content: (tracking?.utm_content as string) ?? null,
-    utm_term: (tracking?.utm_term as string) ?? null,
-    src: (tracking?.src as string) ?? null,
-    sck: (tracking?.sck as string) ?? null,
+    ...tracking_,
     product_id: productId,
     affiliate_id: affiliateId,
+    origem_id: origemId,
     fonte: 'webhook',
   }
 

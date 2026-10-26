@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useIsAdmin } from '@/components/role-context'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
+import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
 
 type RegraUtm = {
   id: string
@@ -27,8 +28,29 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
   const [editing, setEditing] = useState<RegraUtm | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
   const supabase = createClient()
   const isAdmin = useIsAdmin()
+
+  async function handleReprocess() {
+    setReprocessing(true)
+    try {
+      const ctx = await loadOrigemContext(supabase)
+      const { data: entries } = await supabase
+        .from('revenue_entries')
+        .select('id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, src, sck, product_id, affiliate_id, origem_id')
+
+      const updates = (entries ?? [])
+        .map((entry) => ({ id: entry.id, novaOrigemId: calcularOrigemId(entry, entry.product_id, entry.affiliate_id, ctx), origemAtual: entry.origem_id }))
+        .filter((e) => e.novaOrigemId !== e.origemAtual)
+
+      await Promise.all(updates.map((u) => supabase.from('revenue_entries').update({ origem_id: u.novaOrigemId }).eq('id', u.id)))
+
+      alert(`${updates.length} venda(s) tiveram a origem recalculada.`)
+    } finally {
+      setReprocessing(false)
+    }
+  }
 
   const origemName = (id: string) => origens.find((o) => o.id === id)?.name ?? '—'
 
@@ -75,9 +97,14 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
           </p>
         </div>
         {isAdmin && (
-          <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            <Plus size={16} /> Nova regra
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleReprocess} disabled={reprocessing} className="flex items-center gap-2 bg-white border px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              <RefreshCw size={16} className={reprocessing ? 'animate-spin' : ''} /> {reprocessing ? 'Reprocessando...' : 'Reprocessar origens'}
+            </button>
+            <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              <Plus size={16} /> Nova regra
+            </button>
+          </div>
         )}
       </div>
 
