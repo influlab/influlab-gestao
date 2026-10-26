@@ -6,17 +6,52 @@ Dashboard financeiro da InfluencersLAB para gestão de receitas, custos e lucro.
 
 ---
 
+## 🧭 Status atual (ler isto primeiro numa sessão nova)
+
+**Onde paramos:** terminamos a Etapa 4 do plano de expansão do SPEC (`dashboard-kiwify-spec.md`) — webhook Kiwify validando assinatura, com idempotência, capturando UTM/produto/afiliado e calculando `origem_id`; telas `/produtos` e `/regras-utm` no ar. **Ainda não confirmado em produção**: o último deploy (commit `875e538`) foi disparado pelo usuário, mas nenhum webhook novo chegou depois disso pra confirmar que `origem_id` está sendo calculado e que o evento de carrinho abandonado parou de gerar erro de assinatura. **Primeira coisa a fazer numa sessão nova: pedir um reenvio de webhook (ou esperar uma venda real) e conferir `webhook_logs`/`revenue_entries` antes de prosseguir.**
+
+**Próxima etapa do plano** (ver seção "Expansão" abaixo para o plano completo): order bumps (falta payload real de exemplo), importação de histórico (CSV), investimento em tráfego com origem vinculada/ROAS, e o motor de impostos mensal (3%) + reserva trimestral (3%) no dashboard (hoje ainda usa um `0.06` fixo hardcoded em `(app)/page.tsx`).
+
+**Gotchas operacionais importantes:**
+- **O deploy no EasyPanel NÃO é automático.** Está conectado ao GitHub (`influlab/influlab-gestao`, branch `master`), mas precisa disparar manualmente a cada push. Isso já causou ~5 meses de defasagem entre código e produção (descoberto nesta sessão). **Sempre pedir confirmação de deploy depois de um `git push`, e verificar em produção antes de considerar uma etapa concluída** — não basta o código compilar/passar lint.
+- **Como verificar algo em produção sem builds/UI**: ler `.env.local` manualmente (sem `dotenv`, que não está instalado) e consultar via `@supabase/supabase-js` com a `SUPABASE_SERVICE_ROLE_KEY`. Exemplo usado várias vezes nesta sessão:
+  ```bash
+  node -e '
+  const fs = require("fs");
+  const env = {};
+  fs.readFileSync(".env.local", "utf8").split("\n").forEach(line => {
+    const m = line.match(/^([A-Z_]+)=(.*)$/);
+    if (m) env[m[1]] = m[2];
+  });
+  const { createClient } = require("@supabase/supabase-js");
+  const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  supabase.from("webhook_logs").select("*").order("created_at", { ascending: false }).limit(5)
+    .then(({ data, error }) => console.log(JSON.stringify(data ?? error, null, 2)));
+  '
+  ```
+  Isso é leitura segura (service role, sem RLS) — útil para diagnosticar sem depender do Supabase Studio. **Nunca usar isso para inserir dados de teste em produção sem confirmar com o usuário antes** (o sandbox já bloqueou isso uma vez nesta sessão).
+- **`npm run build --webpack` falha localmente** nesta máquina por falta do binário nativo `lightningcss.darwin-arm64.node` (dependência do Tailwind v4) — problema de ambiente, não do código. `npx tsc --noEmit` + `npx eslint` são a verificação disponível localmente; o build real só acontece no EasyPanel.
+- **`node_modules` tem ~5 meses** (última atualização de dependências antes do início desta sessão) — se precisar mexer em dependências, considerar isso.
+
+**Pendência crítica de segurança (ainda não resolvida — não é do usuário, é dele agir):** as chaves do Supabase (`NEXT_PUBLIC_SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY`) são as chaves-demo padrão do template oficial de self-host (`"iss": "supabase-demo"`), nunca rotacionadas. Ver detalhes na seção "Pendências" abaixo.
+
+**Pendência de segurança menor:** o webhook da **Ticto** não tem nenhuma validação de assinatura/token consistente nem idempotência — mesmo risco que o Kiwify tinha antes desta sessão. Não corrigido ainda (fora do escopo pedido até agora).
+
+---
+
 ## Stack Técnica
 
 | Camada | Tecnologia |
 |---|---|
-| Framework | Next.js 16.2.6 (App Router, RSC) |
+| Framework | Next.js 16.2.6 (App Router, RSC) — `middleware.ts` foi renomeado para **`src/proxy.ts`** nesta versão (breaking change real, não é erro) |
 | UI | React 19 + TypeScript 5 strict |
-| Estilo | Tailwind CSS v4 + shadcn/ui (style: "default") |
-| Banco | Supabase (PostgreSQL) — self-hosted na VPS |
-| Auth | Supabase SSR (`@supabase/ssr`) com cookies |
-| Build | `next build --webpack` (Turbopack quebra por causa do `ã` no path) |
-| Deploy | Docker standalone, VPS `89.116.186.109:3000` |
+| Estilo | Tailwind CSS v4 + shadcn/ui (style: "default") — primitivos em `src/components/ui/*`, mas a maioria das telas usa Tailwind puro diretamente, não os componentes shadcn |
+| Banco | Supabase (PostgreSQL) — self-hosted no EasyPanel (`gestao-supabase.ommpuj.easypanel.host`) |
+| Auth | **Autenticação própria** (não é Supabase Auth): tabela `app_users` (pbkdf2) + cookie HMAC (`src/lib/auth.ts`), validado em `src/proxy.ts`. Controle de acesso admin/member é só de UI (`useIsAdmin`), sem checagem equivalente no banco. |
+| ORM | Nenhum — `supabase-js` direto, inclusive CRUD disparado do browser nos Client Components (não há Server Actions para isso) |
+| Testes | Não existe nenhum framework de teste no projeto |
+| Build | `next build --webpack` (Turbopack quebra por causa do `ã` no path) — ver gotcha acima sobre falha local |
+| Deploy | Docker standalone, EasyPanel conectado ao GitHub — **deploy manual, não automático** (ver gotcha acima) |
 
 **Arquivo de configuração-chave:** `next.config.ts` — output `standalone`, `outputFileTracingRoot`.
 
@@ -33,10 +68,12 @@ Dashboard financeiro da InfluencersLAB para gestão de receitas, custos e lucro.
 | `/custos/avulsos` | `variable_costs` | Custos pontuais |
 | `/assinaturas` | `subscriptions` | Assinaturas recorrentes |
 | `/prestadores` | `service_providers` | Prestadores de serviço |
+| `/produtos` | `produtos` | Mapeamento de origem padrão por produto (criados automaticamente pelo webhook) |
+| `/regras-utm` | `regras_utm` | Regras de origem por UTM + botão "Reprocessar origens" |
 | `/configuracoes` | — | Configurações |
 | `/login` | — | Autenticação |
 
-**Webhooks:** `POST /api/webhooks/kiwify` e `POST /api/webhooks/ticto`
+**Webhooks:** `POST /api/webhooks/kiwify` (assinatura validada, idempotente) e `POST /api/webhooks/ticto` (sem proteção ainda)
 
 ---
 
@@ -84,6 +121,8 @@ alter table fixed_costs        add column if not exists end_date date;
 alter table service_providers  add column if not exists start_date date not null default current_date;
 alter table service_providers  add column if not exists end_date date;
 ```
+
+**Tabelas novas da expansão Kiwify (ver seção "Expansão" abaixo para detalhes completos):** `webhook_logs`, `origens`, `produtos`, `afiliados`, `regras_utm`, `configuracoes`. Mais colunas novas em `revenue_entries`: `utm_source/medium/campaign/content/term`, `src`, `sck`, `affiliate_id`, `product_id`, `order_item_type`, `parent_order_id`, `origem_id`, `fonte`. Também há `unique (platform, transaction_id)` em `revenue_entries` (migration `004`).
 
 ---
 
@@ -225,9 +264,8 @@ Mesmo critério se aplica ao "Total mensal" em Custos Fixos.
 - Testar o dashboard após restart do servidor (cache `.next` foi deletado).
 - Atualizar manualmente os `start_date` dos registros existentes no Supabase Studio para as datas de início reais (os registros criados antes da migration receberam `current_date` como default).
 - Avaliar se o campo `active` deve ser setado automaticamente para `false` quando `end_date < today`.
-- **CRÍTICO — rotacionar o JWT secret do Supabase self-hosted.** As chaves em `.env.local` (`NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) decodificam para `"iss": "supabase-demo"` — são as chaves de exemplo publicadas na documentação oficial de self-host do Supabase, nunca rotacionadas para esta instância. Qualquer pessoa que conheça o `JWT_SECRET` padrão do template pode forjar um token `service_role` válido para este banco e ler/escrever em qualquer tabela ignorando RLS. Precisa gerar um `JWT_SECRET` novo no servidor, gerar novas chaves `anon`/`service_role` a partir dele e atualizar `.env.local` e o ambiente do EasyPanel.
-- Rodar a migration `003_webhook_logs.sql` no Supabase Studio (ver seção abaixo).
-- Fazer uma compra/reembolso de teste na Kiwify para validar o fluxo completo do webhook com a assinatura reativada (não foi testado contra o banco de produção nesta sessão, só a rejeição de assinatura inválida/ausente).
+- **CRÍTICO — rotacionar o JWT secret do Supabase self-hosted.** As chaves em `.env.local` (`NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) decodificam para `"iss": "supabase-demo"` — são as chaves de exemplo publicadas na documentação oficial de self-host do Supabase, nunca rotacionadas para esta instância. Qualquer pessoa que conheça o `JWT_SECRET` padrão do template pode forjar um token `service_role` válido para este banco e ler/escrever em qualquer tabela ignorando RLS. Precisa gerar um `JWT_SECRET` novo no servidor, gerar novas chaves `anon`/`service_role` a partir dele e atualizar `.env.local` e o ambiente do EasyPanel. **Ainda não resolvido.**
+- Diagnosticar a relação entre a auth custom (cookie HMAC) e as policies RLS do Supabase (`for all to authenticated`) — o app nunca autentica no Supabase via browser, então não está claro se essas policies estão de fato protegendo algo hoje. Vira importante antes de expor mais dados sensíveis (ex.: `configuracoes` de imposto).
 
 ---
 
@@ -268,7 +306,7 @@ Estrutura real do `Commissions` (payload de produção, venda com afiliado + cop
 
 ### `webhook_logs` (nova tabela, migration `003_webhook_logs.sql`)
 
-Grava **todo** payload recebido nos webhooks (Kiwify/Ticto), antes de qualquer processamento — inclusive tentativas com assinatura inválida. Rodar a migration no Supabase Studio (SQL Editor), igual às anteriores.
+Grava **todo** payload recebido nos webhooks (Kiwify/Ticto), antes de qualquer processamento — inclusive tentativas com assinatura inválida. Migration já rodada em produção.
 
 ```sql
 webhook_logs (
@@ -311,6 +349,7 @@ Afiliado é identificado em `Commissions.commissioned_stores` pelo item com `typ
 - `src/lib/origem.ts` — `calcularOrigemId()` (pura, testável) + `loadOrigemContext()`, implementando a prioridade do SPEC: regra de UTM mais específica → mapeamento por produto → afiliado sem regra ("Afiliados") → "Não identificado".
 - O webhook Kiwify já calcula `origem_id` em toda venda nova.
 - Botão **"Reprocessar origens"** em `/regras-utm`: recalcula `origem_id` de todo o histórico de `revenue_entries` e avisa quantas vendas mudaram.
+- `src/components/origem-select.tsx` — select de origem reaproveitado em `/produtos` e `/regras-utm` com botão "+" para cadastrar uma origem nova sem precisar do Supabase Studio.
 
 **Bug encontrado e corrigido durante os testes em produção**: a mesma URL do webhook também recebe eventos de **carrinho abandonado** da Kiwify (`status: "abandoned"`, sem `order_id`/`Commissions`, aparentemente sem a mesma assinatura das vendas) — estavam sendo rejeitados com 401 repetidamente e logados como "assinatura inválida". Agora esses eventos são identificados antes da checagem de assinatura (não têm `order_id`) e respondidos com 200 sem exigir assinatura, já que nunca viram `revenue_entries`. Vendas de verdade continuam exigindo assinatura válida.
 
@@ -335,9 +374,11 @@ npm run start
 **Variáveis de ambiente (.env.local):**
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://gestao-supabase.ommpuj.easypanel.host
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-NEXT_PUBLIC_APP_URL=http://89.116.186.109:3000
-KIWIFY_WEBHOOK_SECRET=influlab-kiwify-secret-2024
-TICTO_WEBHOOK_TOKEN=influlab-ticto-token-2024
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...   (chave-demo padrão — ver pendência crítica no topo do arquivo)
+SUPABASE_SERVICE_ROLE_KEY=...        (idem)
+NEXT_PUBLIC_APP_URL=https://gestao-gestao.ommpuj.easypanel.host
+KIWIFY_WEBHOOK_SECRET=...   (token configurado no painel de webhooks da Kiwify, não um valor inventado)
+TICTO_WEBHOOK_TOKEN=...
 ```
+
+Essas mesmas variáveis (principalmente `KIWIFY_WEBHOOK_SECRET`) também precisam estar corretas no ambiente do serviço no EasyPanel — não só no `.env.local` local.
