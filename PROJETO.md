@@ -277,9 +277,29 @@ webhook_logs (
 )
 ```
 
-### Etapa 0 — concluída
+### Etapa 0 — concluída e validada em produção
 
-`src/app/api/webhooks/kiwify/route.ts` agora valida `?signature=` (HMAC-SHA1 do corpo bruto com `KIWIFY_WEBHOOK_SECRET`) antes de processar, retorna `401` se inválida/ausente, e grava em `webhook_logs` em qualquer cenário (sucesso, erro de processamento ou assinatura inválida). Testado localmente: requisição sem assinatura e com assinatura errada retornam `401`. O caminho de assinatura válida não foi testado contra o banco de produção nesta sessão (gravaria um pedido de teste real em `revenue_entries`) — testar com uma compra real ou confirmar execução manual antes de considerar fechado.
+`src/app/api/webhooks/kiwify/route.ts` valida `?signature=` (HMAC-SHA1 do corpo bruto com `KIWIFY_WEBHOOK_SECRET`), grava em `webhook_logs` em qualquer cenário, e faz upsert por `transaction_id` (idempotência). Validado com reenvios reais da Kiwify em produção em 26/10/2026.
+
+**Bug crítico encontrado e corrigido**: o payload da Kiwify **não** tem um campo `order` envolvendo tudo — `order_id`, `Product`, `Customer`, `Commissions`, `order_status`, `webhook_event_type` etc. ficam na **raiz do JSON**. Essa suposição errada existia desde o commit original da integração (`317d0b0`, junho/2026) — ou seja, é muito provável que **nenhuma venda real da Kiwify tenha sido gravada automaticamente pelo webhook** até esta correção. Os registros antigos de `revenue_entries` com `platform='kiwify'`, `transaction_id` nulo e valores redondos de dezenas/centenas de milhares são lançamentos manuais de totais mensais, não vendas individuais.
+
+**Trava de idempotência em duas camadas**: checagem no código (`select` antes de `insert`/`update`) + `unique (platform, transaction_id)` em `revenue_entries` (migration `004_revenue_entries_unique_transaction.sql`), para blindar contra requisições simultâneas do mesmo pedido.
+
+**Pendência conhecida**: o webhook da **Ticto** não tem nenhuma dessas proteções (sem validação de assinatura/token consistente, sem idempotência) — ainda não corrigido, mesmo risco se duplicar.
+
+### Etapa 1 — modelo de dados (migration `005_vendas_origem_afiliados.sql`)
+
+Tabelas novas (todas com RLS `authenticated_full_access`, seguindo o padrão das existentes):
+
+- `origens` — catálogo de origem de tráfego, com seed padrão (Meta Ads, TikTok Ads, Google Ads, Impulsionar Instagram, Impulsionar TikTok, Orgânico, Afiliados, Não identificado).
+- `produtos` — `(platform, external_id)` único, nome, apelido, `default_origem_id` (mapeamento de origem padrão por produto).
+- `afiliados` — `(platform, external_id)` único, nome, email.
+- `regras_utm` — campo (`utm_source`/`utm_medium`/`utm_campaign`/`utm_content`/`utm_term`/`src`/`sck`), operador (`igual`/`contem`/`comeca_com`), valor, `origem_id`, `priority` (menor = mais prioridade).
+- `configuracoes` — linha única editável: `aliquota_imposto_mensal` (padrão 3%), `aliquota_reserva_trimestral` (padrão 3%), `base_imposto` (padrão `bruto_aprovado`), taxa de gateway.
+
+Colunas novas em `revenue_entries` (todas nullable ou com default, não quebram nada existente): `utm_source/medium/campaign/content/term`, `src`, `sck`, `affiliate_id`, `product_id`, `order_item_type` (`principal`/`orderbump`, default `principal`), `parent_order_id`, `origem_id`, `fonte` (`webhook`/`importacao`/`manual`, default `manual` — registros antigos ficam como `manual` por aproximação histórica).
+
+Ainda **não** implementado nesta etapa (fica para a próxima): o webhook não preenche essas colunas novas ainda (UTM, afiliado, produto automático, `fonte='webhook'`), e não existe `calcularOrigem()` nem as telas de Produtos/Regras de UTM.
 
 ---
 
