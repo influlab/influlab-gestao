@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { formatBRL, formatDate } from '@/lib/utils'
 import { useIsAdmin } from '@/components/role-context'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Upload } from 'lucide-react'
 
 type RevenueEntry = {
   id: string
@@ -102,9 +103,14 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
           </p>
         </div>
         {isAdmin && (
-          <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            <Plus size={16} /> Entrada manual
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/entradas/importar" className="flex items-center gap-2 border px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+              <Upload size={16} /> Importar CSV
+            </Link>
+            <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              <Plus size={16} /> Entrada manual
+            </button>
+          </div>
         )}
       </div>
 
