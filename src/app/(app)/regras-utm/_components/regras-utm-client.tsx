@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useIsAdmin } from '@/components/role-context'
 import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
+import { OrigemSelect, type Origem } from '@/components/origem-select'
 
 type RegraUtm = {
   id: string
@@ -15,7 +16,6 @@ type RegraUtm = {
   priority: number
   active: boolean
 }
-type Origem = { id: string; name: string }
 
 const fields = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'src', 'sck']
 const operators = ['igual', 'contem', 'comeca_com']
@@ -29,6 +29,7 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
   const [reprocessing, setReprocessing] = useState(false)
+  const [origensState, setOrigensState] = useState(origens)
   const supabase = createClient()
   const isAdmin = useIsAdmin()
 
@@ -52,7 +53,7 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
     }
   }
 
-  const origemName = (id: string) => origens.find((o) => o.id === id)?.name ?? '—'
+  const origemName = (id: string) => origensState.find((o) => o.id === id)?.name ?? '—'
 
   function openNew() { setEditing(null); setForm(emptyForm); setShowForm(true) }
   function openEdit(item: RegraUtm) {
@@ -134,10 +135,14 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Origem *</label>
-                  <select required value={form.origem_id} onChange={(e) => setForm((f) => ({ ...f, origem_id: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
-                    <option value="">Selecione...</option>
-                    {origens.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                  </select>
+                  <OrigemSelect
+                    required
+                    origens={origensState}
+                    onOrigensChange={setOrigensState}
+                    value={form.origem_id}
+                    onChange={(id) => setForm((f) => ({ ...f, origem_id: id }))}
+                    emptyLabel="Selecione..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade *</label>

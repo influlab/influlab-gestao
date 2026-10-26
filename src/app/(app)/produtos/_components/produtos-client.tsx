@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDate } from '@/lib/utils'
 import { useIsAdmin } from '@/components/role-context'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { OrigemSelect, type Origem } from '@/components/origem-select'
 
 type Produto = {
   id: string
@@ -16,7 +17,6 @@ type Produto = {
   active: boolean
   created_at: string
 }
-type Origem = { id: string; name: string }
 
 const platforms = ['kiwify', 'ticto', 'manual', 'other']
 const platformLabels: Record<string, string> = { kiwify: 'Kiwify', ticto: 'Ticto', manual: 'Manual', other: 'Outro' }
@@ -28,10 +28,11 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
   const [editing, setEditing] = useState<Produto | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
+  const [origensState, setOrigensState] = useState(origens)
   const supabase = createClient()
   const isAdmin = useIsAdmin()
 
-  const origemName = (id: string | null) => origens.find((o) => o.id === id)?.name ?? '—'
+  const origemName = (id: string | null) => origensState.find((o) => o.id === id)?.name ?? '—'
 
   function openNew() { setEditing(null); setForm(emptyForm); setShowForm(true) }
   function openEdit(item: Produto) {
@@ -116,10 +117,12 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Origem padrão</label>
-                <select value={form.default_origem_id} onChange={(e) => setForm((f) => ({ ...f, default_origem_id: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
-                  <option value="">Nenhuma</option>
-                  {origens.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <OrigemSelect
+                  origens={origensState}
+                  onOrigensChange={setOrigensState}
+                  value={form.default_origem_id}
+                  onChange={(id) => setForm((f) => ({ ...f, default_origem_id: id }))}
+                />
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} />
