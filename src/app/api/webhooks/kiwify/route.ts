@@ -67,9 +67,11 @@ export async function POST(request: NextRequest) {
     return finish(new Response('Invalid JSON', { status: 400 }), 'JSON inválido')
   }
 
-  const order = payload.order as Record<string, unknown> | undefined
-  if (!order) {
-    return finish(new Response('No order in payload', { status: 400 }), 'Payload sem "order"')
+  // O corpo do webhook da Kiwify É o próprio pedido (order_id, Product, Customer,
+  // Commissions etc. na raiz) — não existe um campo "order" envolvendo tudo.
+  const order = payload
+  if (!order.order_id) {
+    return finish(new Response('Payload sem order_id', { status: 400 }), 'Payload sem order_id')
   }
 
   const eventType = (order.webhook_event_type as string) ?? ''
