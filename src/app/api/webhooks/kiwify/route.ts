@@ -9,13 +9,17 @@ export async function GET() {
 
 // A Kiwify envia a assinatura como HMAC-SHA1 do corpo bruto no parâmetro
 // ?signature= da URL do webhook, usando o token configurado no painel.
-function isValidSignature(rawBody: string, signature: string | null, secret: string): boolean {
-  if (!signature || !secret) return false
-  const expected = crypto.createHmac('sha1', secret).update(rawBody).digest('hex')
+// Suporta múltiplas lojas/produtos Kiwify, cada uma com seu próprio token
+// de webhook: KIWIFY_WEBHOOK_SECRET aceita uma lista separada por vírgula.
+function isValidSignature(rawBody: string, signature: string | null, secrets: string[]): boolean {
+  if (!signature || secrets.length === 0) return false
   const provided = Buffer.from(signature, 'hex')
-  const computed = Buffer.from(expected, 'hex')
-  if (provided.length !== computed.length) return false
-  return crypto.timingSafeEqual(provided, computed)
+  return secrets.some((secret) => {
+    const expected = crypto.createHmac('sha1', secret).update(rawBody).digest('hex')
+    const computed = Buffer.from(expected, 'hex')
+    if (provided.length !== computed.length) return false
+    return crypto.timingSafeEqual(provided, computed)
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -26,8 +30,11 @@ export async function POST(request: NextRequest) {
 
   const rawBody = await request.text()
   const signature = request.nextUrl.searchParams.get('signature')
-  const secret = process.env.KIWIFY_WEBHOOK_SECRET ?? ''
-  const signatureValid = isValidSignature(rawBody, signature, secret)
+  const secrets = (process.env.KIWIFY_WEBHOOK_SECRET ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const signatureValid = isValidSignature(rawBody, signature, secrets)
 
   let payload: Record<string, unknown> | null = null
   try {
