@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# exports de vendas (dados pessoais de clientes reais — nunca commitar)
+*.csv
