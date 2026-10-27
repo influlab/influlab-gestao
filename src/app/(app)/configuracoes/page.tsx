@@ -77,12 +77,12 @@ export default async function ConfiguracoesPage() {
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={`${appUrl}/api/webhooks/ticto?token=SEU_TOKEN`}
+                  value={`${appUrl}/api/webhooks/ticto`}
                   className="flex-1 border rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono"
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Substitua SEU_TOKEN pelo valor de TICTO_WEBHOOK_TOKEN configurado no EasyPanel.
+                A Ticto envia o token de autenticação dentro do corpo da requisição (campo <code>token</code>), não na URL — cole essa URL sem parâmetros no painel da Ticto (Tictools → Webhooks) e configure lá o mesmo valor de TICTO_WEBHOOK_TOKEN do EasyPanel.
               </p>
             </div>
           </div>
