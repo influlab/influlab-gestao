@@ -1,7 +1,7 @@
 'use client'
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, Percent, Landmark, PiggyBank, PackagePlus } from 'lucide-react'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { TrendingUp, TrendingDown, DollarSign, Percent, Landmark, PiggyBank, PackagePlus, Receipt, Hash, Tag, Users } from 'lucide-react'
 import { DashboardFilter } from './dashboard-filter'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
@@ -14,6 +14,9 @@ interface Props {
   from: string
   to: string
   totalRevenue: number
+  totalGrossRevenue: number
+  nVendas: number
+  ticketMedio: number
   totalCosts: number
   totalAds: number
   totalVariable: number
@@ -27,18 +30,31 @@ interface Props {
   trimestralAPagar: { value: number; meses: string } | null
   reservaAcumulada: { value: number; meses: string }
   orderBumpStats: { productName: string; count: number; revenue: number; conversionRate: number }[]
+  vendasPorProduto: { productName: string; count: number; revenue: number }[]
+  vendasPorAfiliado: { affiliateName: string; count: number; revenue: number }[]
+  dailyChartData: { date: string; faturamento: number; investimento: number }[]
+  temFiltroExtra: boolean
   profit: number
   revenueEntries: { gross_amount: number; net_amount: number | null; date: string; platform: string; status: string }[]
   adCostEntries: { amount: number; date: string; platform: string }[]
+  produtos: { id: string; name: string; nickname: string | null }[]
+  origens: { id: string; name: string }[]
+  afiliados: { id: string; name: string | null }[]
+  produtoSelecionado: string
+  origemSelecionada: string
+  afiliadoSelecionado: string
 }
 
 export function DashboardClient({
   from, to,
-  totalRevenue, totalCosts, totalAds, totalVariable,
+  totalRevenue, totalGrossRevenue, nVendas, ticketMedio,
+  totalCosts, totalAds, totalVariable,
   totalSubscriptions, totalFixed, totalProviders,
   impostoMensal, reservaTrimestral, aliquotaImpostoMensal, aliquotaReservaTrimestral,
   trimestralAPagar, reservaAcumulada, orderBumpStats,
+  vendasPorProduto, vendasPorAfiliado, dailyChartData, temFiltroExtra,
   profit, revenueEntries, adCostEntries,
+  produtos, origens, afiliados, produtoSelecionado, origemSelecionada, afiliadoSelecionado,
 }: Props) {
   const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
 
@@ -75,7 +91,16 @@ export function DashboardClient({
           <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
           <p className="text-sm text-slate-500 mt-0.5 capitalize">{monthName}</p>
         </div>
-        <DashboardFilter from={from} to={to} />
+        <DashboardFilter
+          from={from}
+          to={to}
+          produtos={produtos}
+          origens={origens}
+          afiliados={afiliados}
+          produtoSelecionado={produtoSelecionado}
+          origemSelecionada={origemSelecionada}
+          afiliadoSelecionado={afiliadoSelecionado}
+        />
       </div>
 
       {/* KPI cards */}
@@ -131,6 +156,48 @@ export function DashboardClient({
           </div>
         </div>
       </div>
+
+      {/* Cards extras (sempre sobre o período total, sem o filtro de produto/origem/afiliado) */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Faturamento bruto</span>
+            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+              <Receipt size={15} className="text-green-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900">{formatBRL(totalGrossRevenue)}</p>
+          <p className="text-xs text-slate-400 mt-1">Antes de taxas e comissões</p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Nº de vendas</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Hash size={15} className="text-blue-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900">{nVendas}</p>
+          <p className="text-xs text-slate-400 mt-1">Vendas aprovadas no período</p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Ticket médio</span>
+            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
+              <Tag size={15} className="text-purple-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900">{formatBRL(ticketMedio)}</p>
+          <p className="text-xs text-slate-400 mt-1">Faturamento bruto ÷ nº de vendas</p>
+        </div>
+      </div>
+
+      {temFiltroExtra && (
+        <p className="text-xs text-slate-400 mb-5 -mt-3">
+          Filtro de produto/origem/afiliado aplicado: afeta o gráfico diário, a Receita por plataforma e as tabelas de produto/order bump/afiliado abaixo. Receita, Custos, Lucro, Margem e os cards acima continuam somando o período inteiro.
+        </p>
+      )}
 
       {/* Breakdown de custos */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
@@ -217,6 +284,98 @@ export function DashboardClient({
         ) : (
           <p className="text-sm text-slate-400">Nenhum order bump vendido neste período.</p>
         )}
+      </div>
+
+      {/* Vendas por produto e por afiliado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">Vendas por produto</h3>
+          {vendasPorProduto.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 font-medium text-slate-500">Produto</th>
+                    <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
+                    <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendasPorProduto.map((p) => (
+                    <tr key={p.productName} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2 text-slate-900">{p.productName}</td>
+                      <td className="py-2 text-right text-slate-600">{p.count}</td>
+                      <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(p.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Nenhuma venda de produto principal neste período.</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Users size={16} className="text-slate-500" />
+            <h3 className="text-sm font-semibold text-slate-700">Vendas por afiliado</h3>
+          </div>
+          {vendasPorAfiliado.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 font-medium text-slate-500">Afiliado</th>
+                    <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
+                    <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendasPorAfiliado.map((a) => (
+                    <tr key={a.affiliateName} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2 text-slate-900">{a.affiliateName}</td>
+                      <td className="py-2 text-right text-slate-600">{a.count}</td>
+                      <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(a.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-slate-400 mt-3">
+                Comissão paga ao afiliado ainda não é capturada nos dados (só vendas/faturamento por enquanto).
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Nenhuma venda com afiliado vinculado neste período.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Gráfico diário */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">Faturamento × investimento por dia</h3>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={dailyChartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis
+              dataKey="date"
+              tickFormatter={(d) => d.slice(8, 10) + '/' + d.slice(5, 7)}
+              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={20}
+            />
+            <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip
+              labelFormatter={(d) => String(d).split('-').reverse().join('/')}
+              formatter={(value, name) => [formatBRL(Number(value ?? 0)), name === 'faturamento' ? 'Faturamento' : 'Investimento']}
+              contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} formatter={(v) => (v === 'faturamento' ? 'Faturamento' : 'Investimento')} />
+            <Line type="monotone" dataKey="faturamento" stroke="#10b981" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="investimento" stroke="#f59e0b" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Gráficos */}

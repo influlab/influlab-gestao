@@ -25,21 +25,24 @@ function getDefaultDates() {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>
+  searchParams: Promise<{ from?: string; to?: string; produto?: string; origem?: string; afiliado?: string }>
 }) {
   const supabase = await createClient()
   const params = await searchParams
   const defaults = getDefaultDates()
   const from = params.from || defaults.from
   const to = params.to || defaults.to
+  const produtoFiltro = params.produto || null
+  const origemFiltro = params.origem || null
+  const afiliadoFiltro = params.afiliado || null
 
   const hoje = new Date()
   const precisaTrimestralAPagar = isMesDeVencimentoTrimestral(hoje.getMonth())
   const trimestreAnteriorRange = periodoTrimestreAnterior(hoje)
   const trimestreAtualRange = periodoTrimestreAtualParcial(hoje)
 
-  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers, configRes, trimestreAnteriorRes, trimestreAtualRes, produtosRes] = await Promise.all([
-    supabase.from('revenue_entries').select('gross_amount, net_amount, date, platform, status, order_item_type, product_id').gte('date', from).lte('date', to),
+  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers, configRes, trimestreAnteriorRes, trimestreAtualRes, produtosRes, origensRes, afiliadosRes] = await Promise.all([
+    supabase.from('revenue_entries').select('gross_amount, net_amount, date, platform, status, order_item_type, product_id, origem_id, affiliate_id').gte('date', from).lte('date', to),
     supabase.from('ad_costs').select('amount, date, platform').gte('date', from).lte('date', to),
     supabase.from('variable_costs').select('amount, date, category').gte('date', from).lte('date', to),
     supabase.from('subscriptions').select('*')
@@ -57,6 +60,8 @@ export default async function DashboardPage({
       : Promise.resolve({ data: [] as { gross_amount: number | null; net_amount: number | null; status: string }[] }),
     supabase.from('revenue_entries').select('gross_amount, net_amount, status').gte('date', trimestreAtualRange.from).lte('date', trimestreAtualRange.to),
     supabase.from('produtos').select('id, name, nickname'),
+    supabase.from('origens').select('id, name').order('name'),
+    supabase.from('afiliados').select('id, name').order('name'),
   ])
 
   const config: Configuracoes = configRes.data ?? CONFIGURACOES_DEFAULT
@@ -64,15 +69,32 @@ export default async function DashboardPage({
   const approvedRevenues = (revenues.data ?? []).filter(r => r.status === 'approved')
   const totalRevenue = approvedRevenues.reduce((s, r) => s + (r.net_amount ?? r.gross_amount), 0)
   const totalGrossRevenue = approvedRevenues.reduce((s, r) => s + (r.gross_amount ?? r.net_amount ?? 0), 0)
+  const nVendas = approvedRevenues.length
+  const ticketMedio = nVendas > 0 ? totalGrossRevenue / nVendas : 0
+
+  // Filtro extra (produto/origem/afiliado): afeta só as tabelas e gráficos de
+  // detalhe abaixo — Receita/Custos/Lucro/Margem e os cards de imposto no topo
+  // continuam somando o período inteiro, sem esse filtro (não há como atribuir
+  // custos como anúncios/fixos a um produto/origem/afiliado específico ainda).
+  const matchesFiltroExtra = (r: { product_id: string | null; origem_id: string | null; affiliate_id: string | null }) =>
+    (!produtoFiltro || r.product_id === produtoFiltro) &&
+    (!origemFiltro || r.origem_id === origemFiltro) &&
+    (!afiliadoFiltro || r.affiliate_id === afiliadoFiltro)
+  const temFiltroExtra = Boolean(produtoFiltro || origemFiltro || afiliadoFiltro)
+  const revenueEntriesFiltradas = (revenues.data ?? []).filter(matchesFiltroExtra)
+  const approvedFiltradas = approvedRevenues.filter(matchesFiltroExtra)
+
+  const produtoNomeById = new Map((produtosRes.data ?? []).map(p => [p.id, p.nickname || p.name]))
+  const afiliadoNomeById = new Map((afiliadosRes.data ?? []).map(a => [a.id, a.name ?? 'Sem nome']))
 
   // Order bumps: taxa de conversão = vendas do bump ÷ pedidos principais aprovados
-  // no período. Sem parent_order_id de verdade (nunca veio um payload real com
-  // order bump pra saber o vínculo exato), a taxa é relativa ao total de pedidos
-  // principais do período, não a um produto principal específico.
-  const produtoNomeById = new Map((produtosRes.data ?? []).map(p => [p.id, p.nickname || p.name]))
-  const approvedPrincipalCount = approvedRevenues.filter(r => r.order_item_type === 'principal').length
+  // no período (já considerando o filtro extra). Sem parent_order_id de verdade
+  // (nunca veio um payload real com order bump pra saber o vínculo exato), a taxa
+  // é relativa ao total de pedidos principais do período, não a um produto
+  // principal específico.
+  const approvedPrincipalCount = approvedFiltradas.filter(r => r.order_item_type === 'principal').length
   const orderBumpGroups = new Map<string, { count: number; revenue: number }>()
-  for (const r of approvedRevenues) {
+  for (const r of approvedFiltradas) {
     if (r.order_item_type !== 'orderbump') continue
     const key = r.product_id ?? 'sem-produto'
     const g = orderBumpGroups.get(key) ?? { count: 0, revenue: 0 }
@@ -88,6 +110,63 @@ export default async function DashboardPage({
       conversionRate: approvedPrincipalCount > 0 ? (g.count / approvedPrincipalCount) * 100 : 0,
     }))
     .sort((a, b) => b.revenue - a.revenue)
+
+  // Vendas por produto (só principal — order bump já tem a tabela própria acima)
+  const produtoGroups = new Map<string, { count: number; revenue: number }>()
+  for (const r of approvedFiltradas) {
+    if (r.order_item_type !== 'principal') continue
+    const key = r.product_id ?? 'sem-produto'
+    const g = produtoGroups.get(key) ?? { count: 0, revenue: 0 }
+    g.count += 1
+    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    produtoGroups.set(key, g)
+  }
+  const vendasPorProduto = Array.from(produtoGroups.entries())
+    .map(([productId, g]) => ({
+      productName: produtoNomeById.get(productId) ?? 'Produto não mapeado',
+      count: g.count,
+      revenue: g.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+
+  // Vendas por afiliado — "comissão paga" não é capturada hoje pelo webhook nem
+  // pela importação (só vendas/faturamento, ver PROJETO.md).
+  const afiliadoGroups = new Map<string, { count: number; revenue: number }>()
+  for (const r of approvedFiltradas) {
+    if (!r.affiliate_id) continue
+    const g = afiliadoGroups.get(r.affiliate_id) ?? { count: 0, revenue: 0 }
+    g.count += 1
+    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    afiliadoGroups.set(r.affiliate_id, g)
+  }
+  const vendasPorAfiliado = Array.from(afiliadoGroups.entries())
+    .map(([affiliateId, g]) => ({
+      affiliateName: afiliadoNomeById.get(affiliateId) ?? 'Afiliado não identificado',
+      count: g.count,
+      revenue: g.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+
+  // Gráfico diário: faturamento aprovado (com filtro extra) × investimento em
+  // anúncios (sem filtro extra — ad_costs ainda não tem origem/produto/afiliado
+  // vinculado, é a pendência de ROAS).
+  const diasPeriodo: string[] = []
+  for (let d = new Date(from + 'T00:00:00'); d <= new Date(to + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+    diasPeriodo.push(d.toISOString().split('T')[0])
+  }
+  const revenuePorDia = new Map<string, number>()
+  for (const r of approvedFiltradas) {
+    revenuePorDia.set(r.date, (revenuePorDia.get(r.date) ?? 0) + (r.gross_amount ?? r.net_amount ?? 0))
+  }
+  const adsPorDia = new Map<string, number>()
+  for (const r of adCosts.data ?? []) {
+    adsPorDia.set(r.date, (adsPorDia.get(r.date) ?? 0) + r.amount)
+  }
+  const dailyChartData = diasPeriodo.map((date) => ({
+    date,
+    faturamento: revenuePorDia.get(date) ?? 0,
+    investimento: adsPorDia.get(date) ?? 0,
+  }))
 
   const totalAds = (adCosts.data ?? []).reduce((s, r) => s + r.amount, 0)
   const totalVariable = (variableCosts.data ?? []).reduce((s, r) => s + r.amount, 0)
@@ -154,6 +233,9 @@ export default async function DashboardPage({
       from={from}
       to={to}
       totalRevenue={totalRevenue}
+      totalGrossRevenue={totalGrossRevenue}
+      nVendas={nVendas}
+      ticketMedio={ticketMedio}
       totalCosts={totalCosts}
       totalAds={totalAds}
       totalVariable={totalVariable}
@@ -167,9 +249,19 @@ export default async function DashboardPage({
       trimestralAPagar={trimestralAPagar}
       reservaAcumulada={reservaAcumulada}
       orderBumpStats={orderBumpStats}
+      vendasPorProduto={vendasPorProduto}
+      vendasPorAfiliado={vendasPorAfiliado}
+      dailyChartData={dailyChartData}
+      temFiltroExtra={temFiltroExtra}
       profit={profit}
-      revenueEntries={revenues.data ?? []}
+      revenueEntries={revenueEntriesFiltradas}
       adCostEntries={adCosts.data ?? []}
+      produtos={produtosRes.data ?? []}
+      origens={origensRes.data ?? []}
+      afiliados={afiliadosRes.data ?? []}
+      produtoSelecionado={produtoFiltro ?? ''}
+      origemSelecionada={origemFiltro ?? ''}
+      afiliadoSelecionado={afiliadoFiltro ?? ''}
     />
   )
 }
