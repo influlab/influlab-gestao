@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
+import { resolveAfiliadoId } from '@/lib/afiliados'
 
 export async function GET() {
   return new Response('OK', { status: 200 })
@@ -135,7 +136,10 @@ export async function POST(request: NextRequest) {
   const productId = await getOrCreateId('produtos', item?.product_id as string | number | undefined, {
     name: (item?.product_name as string) ?? null,
   })
-  const affiliateId = await getOrCreateId('afiliados', affiliateEntry?.id as string | number | undefined, {
+  // Mesmo cuidado do webhook da Kiwify: busca por e-mail primeiro, porque o "id"
+  // de dentro de affiliates[] pode ser por-venda em vez de por-afiliado.
+  const affiliateId = await resolveAfiliadoId(supabase, 'ticto', {
+    externalId: affiliateEntry?.id !== undefined && affiliateEntry?.id !== null ? String(affiliateEntry.id) : null,
     name: (affiliateEntry?.name as string) ?? null,
     email: (affiliateEntry?.email as string) ?? null,
   })

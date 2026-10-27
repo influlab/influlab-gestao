@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
+import { resolveAfiliadoId } from '@/lib/afiliados'
 
 export async function GET() {
   return new Response('OK', { status: 200 })
@@ -134,7 +135,10 @@ export async function POST(request: NextRequest) {
   const productId = await getOrCreateId('produtos', product?.product_id as string | undefined, {
     name: (product?.product_name as string) ?? null,
   })
-  const affiliateId = await getOrCreateId('afiliados', affiliateEntry?.id as string | undefined, {
+  // "id" muda a cada venda (é o registro de comissão, não o afiliado) — "affiliate_id"
+  // é o código da Kiwify pro afiliado, mais estável, usado só como fallback do e-mail.
+  const affiliateId = await resolveAfiliadoId(supabase, 'kiwify', {
+    externalId: (affiliateEntry?.affiliate_id as string) ?? (affiliateEntry?.id as string) ?? null,
     name: (affiliateEntry?.custom_name as string) ?? null,
     email: (affiliateEntry?.email as string) ?? null,
   })
