@@ -38,8 +38,8 @@ export default async function DashboardPage({
   const trimestreAnteriorRange = periodoTrimestreAnterior(hoje)
   const trimestreAtualRange = periodoTrimestreAtualParcial(hoje)
 
-  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers, configRes, trimestreAnteriorRes, trimestreAtualRes] = await Promise.all([
-    supabase.from('revenue_entries').select('gross_amount, net_amount, date, platform, status').gte('date', from).lte('date', to),
+  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers, configRes, trimestreAnteriorRes, trimestreAtualRes, produtosRes] = await Promise.all([
+    supabase.from('revenue_entries').select('gross_amount, net_amount, date, platform, status, order_item_type, product_id').gte('date', from).lte('date', to),
     supabase.from('ad_costs').select('amount, date, platform').gte('date', from).lte('date', to),
     supabase.from('variable_costs').select('amount, date, category').gte('date', from).lte('date', to),
     supabase.from('subscriptions').select('*')
@@ -56,6 +56,7 @@ export default async function DashboardPage({
       ? supabase.from('revenue_entries').select('gross_amount, net_amount, status').gte('date', trimestreAnteriorRange.from).lte('date', trimestreAnteriorRange.to)
       : Promise.resolve({ data: [] as { gross_amount: number | null; net_amount: number | null; status: string }[] }),
     supabase.from('revenue_entries').select('gross_amount, net_amount, status').gte('date', trimestreAtualRange.from).lte('date', trimestreAtualRange.to),
+    supabase.from('produtos').select('id, name, nickname'),
   ])
 
   const config: Configuracoes = configRes.data ?? CONFIGURACOES_DEFAULT
@@ -63,6 +64,30 @@ export default async function DashboardPage({
   const approvedRevenues = (revenues.data ?? []).filter(r => r.status === 'approved')
   const totalRevenue = approvedRevenues.reduce((s, r) => s + (r.net_amount ?? r.gross_amount), 0)
   const totalGrossRevenue = approvedRevenues.reduce((s, r) => s + (r.gross_amount ?? r.net_amount ?? 0), 0)
+
+  // Order bumps: taxa de conversão = vendas do bump ÷ pedidos principais aprovados
+  // no período. Sem parent_order_id de verdade (nunca veio um payload real com
+  // order bump pra saber o vínculo exato), a taxa é relativa ao total de pedidos
+  // principais do período, não a um produto principal específico.
+  const produtoNomeById = new Map((produtosRes.data ?? []).map(p => [p.id, p.nickname || p.name]))
+  const approvedPrincipalCount = approvedRevenues.filter(r => r.order_item_type === 'principal').length
+  const orderBumpGroups = new Map<string, { count: number; revenue: number }>()
+  for (const r of approvedRevenues) {
+    if (r.order_item_type !== 'orderbump') continue
+    const key = r.product_id ?? 'sem-produto'
+    const g = orderBumpGroups.get(key) ?? { count: 0, revenue: 0 }
+    g.count += 1
+    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    orderBumpGroups.set(key, g)
+  }
+  const orderBumpStats = Array.from(orderBumpGroups.entries())
+    .map(([productId, g]) => ({
+      productName: produtoNomeById.get(productId) ?? 'Produto não identificado',
+      count: g.count,
+      revenue: g.revenue,
+      conversionRate: approvedPrincipalCount > 0 ? (g.count / approvedPrincipalCount) * 100 : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
 
   const totalAds = (adCosts.data ?? []).reduce((s, r) => s + r.amount, 0)
   const totalVariable = (variableCosts.data ?? []).reduce((s, r) => s + r.amount, 0)
@@ -141,6 +166,7 @@ export default async function DashboardPage({
       aliquotaReservaTrimestral={config.aliquota_reserva_trimestral}
       trimestralAPagar={trimestralAPagar}
       reservaAcumulada={reservaAcumulada}
+      orderBumpStats={orderBumpStats}
       profit={profit}
       revenueEntries={revenues.data ?? []}
       adCostEntries={adCosts.data ?? []}

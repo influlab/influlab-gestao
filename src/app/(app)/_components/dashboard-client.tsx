@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, Percent, Landmark, PiggyBank } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Percent, Landmark, PiggyBank, PackagePlus } from 'lucide-react'
 import { DashboardFilter } from './dashboard-filter'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
@@ -26,6 +26,7 @@ interface Props {
   aliquotaReservaTrimestral: number
   trimestralAPagar: { value: number; meses: string } | null
   reservaAcumulada: { value: number; meses: string }
+  orderBumpStats: { productName: string; count: number; revenue: number; conversionRate: number }[]
   profit: number
   revenueEntries: { gross_amount: number; net_amount: number | null; date: string; platform: string; status: string }[]
   adCostEntries: { amount: number; date: string; platform: string }[]
@@ -36,7 +37,7 @@ export function DashboardClient({
   totalRevenue, totalCosts, totalAds, totalVariable,
   totalSubscriptions, totalFixed, totalProviders,
   impostoMensal, reservaTrimestral, aliquotaImpostoMensal, aliquotaReservaTrimestral,
-  trimestralAPagar, reservaAcumulada,
+  trimestralAPagar, reservaAcumulada, orderBumpStats,
   profit, revenueEntries, adCostEntries,
 }: Props) {
   const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
@@ -179,6 +180,43 @@ export function DashboardClient({
           <p className="text-2xl font-bold text-slate-900">{formatBRL(reservaAcumulada.value)}</p>
           <p className="text-xs text-slate-400 mt-1">{aliquotaReservaTrimestral}% do faturamento de {reservaAcumulada.meses} até hoje</p>
         </div>
+      </div>
+
+      {/* Order bumps */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
+        <div className="flex items-center gap-2 mb-4">
+          <PackagePlus size={16} className="text-amber-600" />
+          <h3 className="text-sm font-semibold text-slate-700">Order bumps</h3>
+        </div>
+        {orderBumpStats.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-2 font-medium text-slate-500">Produto</th>
+                  <th className="text-right py-2 font-medium text-slate-500">Qtd vendida</th>
+                  <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                  <th className="text-right py-2 font-medium text-slate-500">Taxa de conversão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderBumpStats.map((o) => (
+                  <tr key={o.productName} className="border-b border-slate-50 last:border-0">
+                    <td className="py-2 text-slate-900">{o.productName}</td>
+                    <td className="py-2 text-right text-slate-600">{o.count}</td>
+                    <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.revenue)}</td>
+                    <td className="py-2 text-right text-slate-600">{o.conversionRate.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-slate-400 mt-3">
+              Taxa de conversão = vendas do order bump ÷ pedidos principais aprovados no período. Sem o pedido principal exato vinculado a cada bump, a taxa é relativa ao total de pedidos principais do período, não a um produto específico.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Nenhum order bump vendido neste período.</p>
+        )}
       </div>
 
       {/* Gráficos */}
