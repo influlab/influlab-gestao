@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDate } from '@/lib/utils'
 import { useIsAdmin } from '@/components/role-context'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { OrigemSelect, type Origem } from '@/components/origem-select'
 
 type Produto = {
@@ -15,12 +15,13 @@ type Produto = {
   nickname: string | null
   default_origem_id: string | null
   active: boolean
+  is_orderbump: boolean
   created_at: string
 }
 
 const platforms = ['kiwify', 'ticto', 'manual', 'other']
 const platformLabels: Record<string, string> = { kiwify: 'Kiwify', ticto: 'Ticto', manual: 'Manual', other: 'Outro' }
-const emptyForm = { platform: 'kiwify', external_id: '', name: '', nickname: '', default_origem_id: '', active: true }
+const emptyForm = { platform: 'kiwify', external_id: '', name: '', nickname: '', default_origem_id: '', active: true, is_orderbump: false }
 
 export function ProdutosClient({ initialData, origens }: { initialData: Produto[]; origens: Origem[] }) {
   const [data, setData] = useState(initialData)
@@ -28,9 +29,37 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
   const [editing, setEditing] = useState<Produto | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
   const [origensState, setOrigensState] = useState(origens)
   const supabase = createClient()
   const isAdmin = useIsAdmin()
+
+  async function handleReprocessOrderbumps() {
+    setReprocessing(true)
+    try {
+      const orderbumpProductIds = new Set(data.filter((p) => p.is_orderbump).map((p) => p.id))
+      const { data: entries } = await supabase
+        .from('revenue_entries')
+        .select('id, product_id, order_item_type')
+
+      const updates = (entries ?? [])
+        .map((e) => ({
+          id: e.id,
+          novoTipo: e.product_id && orderbumpProductIds.has(e.product_id) ? 'orderbump' : 'principal',
+          tipoAtual: e.order_item_type,
+        }))
+        .filter((u) => u.novoTipo !== u.tipoAtual)
+
+      for (let i = 0; i < updates.length; i += 200) {
+        const chunk = updates.slice(i, i + 200)
+        await Promise.all(chunk.map((u) => supabase.from('revenue_entries').update({ order_item_type: u.novoTipo }).eq('id', u.id)))
+      }
+
+      alert(`${updates.length} venda(s) tiveram o tipo (principal/order bump) recalculado.`)
+    } finally {
+      setReprocessing(false)
+    }
+  }
 
   const origemName = (id: string | null) => origensState.find((o) => o.id === id)?.name ?? '—'
 
@@ -44,6 +73,7 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
       nickname: item.nickname ?? '',
       default_origem_id: item.default_origem_id ?? '',
       active: item.active,
+      is_orderbump: item.is_orderbump,
     })
     setShowForm(true)
   }
@@ -57,6 +87,7 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
       nickname: form.nickname || null,
       default_origem_id: form.default_origem_id || null,
       active: form.active,
+      is_orderbump: form.is_orderbump,
     }
     if (editing) {
       const { data: u } = await supabase.from('produtos').update(payload).eq('id', editing.id).select().single()
@@ -84,9 +115,14 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
           </p>
         </div>
         {isAdmin && (
-          <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            <Plus size={16} /> Novo produto
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleReprocessOrderbumps} disabled={reprocessing} className="flex items-center gap-2 bg-white border px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              <RefreshCw size={16} className={reprocessing ? 'animate-spin' : ''} /> {reprocessing ? 'Recalculando...' : 'Recalcular order bumps'}
+            </button>
+            <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              <Plus size={16} /> Novo produto
+            </button>
+          </div>
         )}
       </div>
 
@@ -128,6 +164,10 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} />
                 Ativo
               </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={form.is_orderbump} onChange={(e) => setForm((f) => ({ ...f, is_orderbump: e.target.checked }))} />
+                É order bump (vendido sempre junto com outro produto)
+              </label>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button>
                 <button type="submit" disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{loading ? 'Salvando...' : 'Salvar'}</button>
@@ -154,7 +194,12 @@ export function ProdutosClient({ initialData, origens }: { initialData: Produto[
             {data.map((item) => (
               <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <p className="font-medium text-gray-900">{item.nickname || item.name}</p>
+                  <p className="font-medium text-gray-900 flex items-center gap-2">
+                    {item.nickname || item.name}
+                    {item.is_orderbump && (
+                      <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">Order bump</span>
+                    )}
+                  </p>
                   {item.nickname && <p className="text-xs text-gray-400">{item.name}</p>}
                 </td>
                 <td className="px-4 py-3 text-gray-600">{platformLabels[item.platform] ?? item.platform}</td>

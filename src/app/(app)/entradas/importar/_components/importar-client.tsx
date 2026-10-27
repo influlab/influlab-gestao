@@ -42,6 +42,7 @@ type ParsedRow = {
   status: string
   origemId: string | null
   origemNome: string | null
+  orderItemType: 'principal' | 'orderbump'
   duplicate: boolean
   errors: string[]
   tracking: {
@@ -92,7 +93,7 @@ export function ImportarClient({
 }: {
   origens: Origem[]
   origemContext: OrigemContext
-  produtosNome: { id: string; name: string }[]
+  produtosNome: { id: string; name: string; is_orderbump: boolean }[]
   existingOrderRefs: string[]
 }) {
   const isAdmin = useIsAdmin()
@@ -108,6 +109,7 @@ export function ImportarClient({
   const [result, setResult] = useState<{ inserted: number; failed: number; error?: string } | null>(null)
 
   const produtoIdByName = useMemo(() => new Map(produtosNome.map((p) => [p.name, p.id])), [produtosNome])
+  const orderbumpProductIds = useMemo(() => new Set(produtosNome.filter((p) => p.is_orderbump).map((p) => p.id)), [produtosNome])
   const origemNomeById = useMemo(() => new Map(origens.map((o) => [o.id, o.name])), [origens])
   const existingRefsSet = useMemo(() => new Set(existingOrderRefs), [existingOrderRefs])
 
@@ -194,6 +196,7 @@ export function ImportarClient({
         }
 
         const duplicate = orderRef ? existingRefsSet.has(orderRef) : false
+        const orderItemType: 'principal' | 'orderbump' = productId && orderbumpProductIds.has(productId) ? 'orderbump' : 'principal'
 
         return {
           line: i + 2,
@@ -208,6 +211,7 @@ export function ImportarClient({
           status: status ?? statusRaw,
           origemId,
           origemNome: origemId ? origemNomeById.get(origemId) ?? null : null,
+          orderItemType,
           duplicate,
           errors,
           tracking,
@@ -246,6 +250,7 @@ export function ImportarClient({
       sck: r.tracking.sck,
       product_id: r.productId,
       origem_id: r.origemId,
+      order_item_type: r.orderItemType,
       fonte: 'importacao',
     }))
 

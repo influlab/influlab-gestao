@@ -139,6 +139,14 @@ export async function POST(request: NextRequest) {
     email: (affiliateEntry?.email as string) ?? null,
   })
 
+  // Sem exemplo real de payload com order bump ainda (ver dashboard-kiwify-spec.md) —
+  // classificação por produto, marcada manualmente em /produtos, não por estrutura do JSON.
+  let orderItemType: 'principal' | 'orderbump' = 'principal'
+  if (productId) {
+    const { data: produtoRow } = await supabase.from('produtos').select('is_orderbump').eq('id', productId).single()
+    if (produtoRow?.is_orderbump) orderItemType = 'orderbump'
+  }
+
   const tracking_ = {
     utm_source: (tracking?.utm_source as string) ?? null,
     utm_medium: (tracking?.utm_medium as string) ?? null,
@@ -166,6 +174,7 @@ export async function POST(request: NextRequest) {
     product_id: productId,
     affiliate_id: affiliateId,
     origem_id: origemId,
+    order_item_type: orderItemType,
     fonte: 'webhook',
   }
 

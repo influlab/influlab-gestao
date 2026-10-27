@@ -10,7 +10,7 @@ export default async function ImportarCsvPage() {
   const [{ data: origens }, origemContext, { data: produtosNome }, { data: existentes }] = await Promise.all([
     supabase.from('origens').select('id, name').order('name'),
     loadOrigemContext(supabase),
-    supabase.from('produtos').select('id, name'),
+    supabase.from('produtos').select('id, name, is_orderbump'),
     // dedup: vendas da Kiwify já capturadas via webhook usam como transaction_id o
     // "order_id" (UUID), não o "ID da venda" (order_ref, código curto) do export CSV.
     // Pra não duplicar, cruzamos contra os dois: transaction_id direto (cobre

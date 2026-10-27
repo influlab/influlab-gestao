@@ -140,6 +140,15 @@ export async function POST(request: NextRequest) {
     email: (affiliateEntry?.email as string) ?? null,
   })
 
+  // Mesmo critério do webhook da Kiwify: classificação por produto (flag
+  // manual em /produtos), não por estrutura do payload — sem exemplo real
+  // de order bump da Ticto ainda.
+  let orderItemType: 'principal' | 'orderbump' = 'principal'
+  if (productId) {
+    const { data: produtoRow } = await supabase.from('produtos').select('is_orderbump').eq('id', productId).single()
+    if (produtoRow?.is_orderbump) orderItemType = 'orderbump'
+  }
+
   const tracking_ = {
     utm_source: naoInformado(tracking?.utm_source),
     utm_medium: naoInformado(tracking?.utm_medium),
@@ -172,6 +181,7 @@ export async function POST(request: NextRequest) {
     product_id: productId,
     affiliate_id: affiliateId,
     origem_id: origemId,
+    order_item_type: orderItemType,
     fonte: 'webhook',
   }
 
