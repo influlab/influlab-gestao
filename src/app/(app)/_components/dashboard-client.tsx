@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Percent, Landmark, PiggyBank } from 'lucide-react'
 import { DashboardFilter } from './dashboard-filter'
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
@@ -20,7 +20,12 @@ interface Props {
   totalSubscriptions: number
   totalFixed: number
   totalProviders: number
-  totalTax: number
+  impostoMensal: number
+  reservaTrimestral: number
+  aliquotaImpostoMensal: number
+  aliquotaReservaTrimestral: number
+  trimestralAPagar: { value: number; meses: string } | null
+  reservaAcumulada: { value: number; meses: string }
   profit: number
   revenueEntries: { gross_amount: number; net_amount: number | null; date: string; platform: string; status: string }[]
   adCostEntries: { amount: number; date: string; platform: string }[]
@@ -29,7 +34,9 @@ interface Props {
 export function DashboardClient({
   from, to,
   totalRevenue, totalCosts, totalAds, totalVariable,
-  totalSubscriptions, totalFixed, totalProviders, totalTax = 0,
+  totalSubscriptions, totalFixed, totalProviders,
+  impostoMensal, reservaTrimestral, aliquotaImpostoMensal, aliquotaReservaTrimestral,
+  trimestralAPagar, reservaAcumulada,
   profit, revenueEntries, adCostEntries,
 }: Props) {
   const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
@@ -53,7 +60,8 @@ export function DashboardClient({
     { label: 'Assinaturas', value: totalSubscriptions, color: 'bg-purple-500' },
     { label: 'Prestadores', value: totalProviders, color: 'bg-blue-500' },
     { label: 'Avulsos', value: totalVariable, color: 'bg-yellow-500' },
-    { label: 'Impostos (6%)', value: totalTax, color: 'bg-teal-500' },
+    { label: `Imposto mensal (${aliquotaImpostoMensal}%)`, value: impostoMensal, color: 'bg-teal-500' },
+    { label: `Reserva trimestral (${aliquotaReservaTrimestral}%)`, value: reservaTrimestral, color: 'bg-cyan-500' },
   ]
 
   const now = new Date()
@@ -143,6 +151,33 @@ export function DashboardClient({
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* Cards de imposto trimestral */}
+      <div className={`grid grid-cols-1 ${trimestralAPagar ? 'md:grid-cols-2' : ''} gap-4 mb-5`}>
+        {trimestralAPagar && (
+          <div className="bg-white rounded-xl border border-teal-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Trimestral a pagar este mês</span>
+              <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Landmark size={15} className="text-teal-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{formatBRL(trimestralAPagar.value)}</p>
+            <p className="text-xs text-slate-400 mt-1">{aliquotaReservaTrimestral}% do faturamento de {trimestralAPagar.meses}</p>
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Reserva acumulada do trimestre</span>
+            <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center">
+              <PiggyBank size={15} className="text-cyan-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900">{formatBRL(reservaAcumulada.value)}</p>
+          <p className="text-xs text-slate-400 mt-1">{aliquotaReservaTrimestral}% do faturamento de {reservaAcumulada.meses} até hoje</p>
         </div>
       </div>
 

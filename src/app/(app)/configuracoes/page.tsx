@@ -1,7 +1,9 @@
 export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
+import { CONFIGURACOES_DEFAULT } from '@/lib/impostos'
 import { UsuariosClient } from './_components/usuarios-client'
+import { ImpostosClient } from './_components/impostos-client'
 
 type AppUser = {
   id: string
@@ -25,9 +27,20 @@ async function getUsers(): Promise<AppUser[]> {
   }
 }
 
+async function getConfig() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('configuracoes')
+    .select('id, aliquota_imposto_mensal, aliquota_reserva_trimestral, base_imposto')
+    .limit(1)
+    .maybeSingle()
+  return data ?? { id: null, ...CONFIGURACOES_DEFAULT }
+}
+
 export default async function ConfiguracoesPage() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://seu-dominio.com'
   const users = await getUsers()
+  const config = await getConfig()
 
   return (
     <div>
@@ -35,6 +48,8 @@ export default async function ConfiguracoesPage() {
 
       <div className="space-y-6 max-w-2xl">
         <UsuariosClient initialUsers={users} />
+
+        <ImpostosClient initialConfig={config} />
 
         <div className="bg-white rounded-xl border p-6">
           <h3 className="font-semibold text-gray-900 mb-1">Webhooks de Vendas</h3>

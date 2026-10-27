@@ -1,6 +1,15 @@
 export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
+import {
+  CONFIGURACOES_DEFAULT,
+  baseImposto,
+  isMesDeVencimentoTrimestral,
+  periodoTrimestreAnterior,
+  periodoTrimestreAtualParcial,
+  somaAprovados,
+  type Configuracoes,
+} from '@/lib/impostos'
 import { DashboardClient } from './_components/dashboard-client'
 
 function getDefaultDates() {
@@ -24,7 +33,12 @@ export default async function DashboardPage({
   const from = params.from || defaults.from
   const to = params.to || defaults.to
 
-  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers] = await Promise.all([
+  const hoje = new Date()
+  const precisaTrimestralAPagar = isMesDeVencimentoTrimestral(hoje.getMonth())
+  const trimestreAnteriorRange = periodoTrimestreAnterior(hoje)
+  const trimestreAtualRange = periodoTrimestreAtualParcial(hoje)
+
+  const [revenues, adCosts, variableCosts, subscriptions, fixedCosts, providers, configRes, trimestreAnteriorRes, trimestreAtualRes] = await Promise.all([
     supabase.from('revenue_entries').select('gross_amount, net_amount, date, platform, status').gte('date', from).lte('date', to),
     supabase.from('ad_costs').select('amount, date, platform').gte('date', from).lte('date', to),
     supabase.from('variable_costs').select('amount, date, category').gte('date', from).lte('date', to),
@@ -37,7 +51,14 @@ export default async function DashboardPage({
     supabase.from('service_providers').select('*')
       .lte('start_date', to)
       .or(`end_date.is.null,end_date.gte.${from}`),
+    supabase.from('configuracoes').select('aliquota_imposto_mensal, aliquota_reserva_trimestral, base_imposto').limit(1).maybeSingle(),
+    precisaTrimestralAPagar
+      ? supabase.from('revenue_entries').select('gross_amount, net_amount, status').gte('date', trimestreAnteriorRange.from).lte('date', trimestreAnteriorRange.to)
+      : Promise.resolve({ data: [] as { gross_amount: number | null; net_amount: number | null; status: string }[] }),
+    supabase.from('revenue_entries').select('gross_amount, net_amount, status').gte('date', trimestreAtualRange.from).lte('date', trimestreAtualRange.to),
   ])
+
+  const config: Configuracoes = configRes.data ?? CONFIGURACOES_DEFAULT
 
   const approvedRevenues = (revenues.data ?? []).filter(r => r.status === 'approved')
   const totalRevenue = approvedRevenues.reduce((s, r) => s + (r.net_amount ?? r.gross_amount), 0)
@@ -77,7 +98,29 @@ export default async function DashboardPage({
   const totalSubscriptions = (subscriptions.data ?? []).filter(inPeriod).reduce((s: number, r: any) => s + r.amount, 0)
   const totalFixed = (fixedCosts.data ?? []).filter(inPeriod).reduce((s: number, r: any) => s + r.amount, 0)
   const totalProviders = (providers.data ?? []).filter(inPeriod).reduce((s: number, r: any) => s + providerAmount(r), 0)
-  const totalTax = Math.round(totalGrossRevenue * 0.06 * 100) / 100
+
+  const baseImpostoPeriodo = baseImposto(config, totalGrossRevenue, totalRevenue)
+  const impostoMensal = Math.round(baseImpostoPeriodo * config.aliquota_imposto_mensal / 100 * 100) / 100
+  const reservaTrimestral = Math.round(baseImpostoPeriodo * config.aliquota_reserva_trimestral / 100 * 100) / 100
+  const totalTax = impostoMensal + reservaTrimestral
+
+  let trimestralAPagar: { value: number; meses: string } | null = null
+  if (precisaTrimestralAPagar) {
+    const s = somaAprovados(trimestreAnteriorRes.data ?? [])
+    const base = baseImposto(config, s.gross, s.net)
+    trimestralAPagar = {
+      value: Math.round(base * config.aliquota_reserva_trimestral / 100 * 100) / 100,
+      meses: trimestreAnteriorRange.meses,
+    }
+  }
+
+  const sAtual = somaAprovados(trimestreAtualRes.data ?? [])
+  const baseAtual = baseImposto(config, sAtual.gross, sAtual.net)
+  const reservaAcumulada = {
+    value: Math.round(baseAtual * config.aliquota_reserva_trimestral / 100 * 100) / 100,
+    meses: trimestreAtualRange.meses,
+  }
+
   const totalCosts = totalAds + totalVariable + totalSubscriptions + totalFixed + totalProviders + totalTax
   const profit = totalRevenue - totalCosts
 
@@ -92,7 +135,12 @@ export default async function DashboardPage({
       totalSubscriptions={totalSubscriptions}
       totalFixed={totalFixed}
       totalProviders={totalProviders}
-      totalTax={totalTax}
+      impostoMensal={impostoMensal}
+      reservaTrimestral={reservaTrimestral}
+      aliquotaImpostoMensal={config.aliquota_imposto_mensal}
+      aliquotaReservaTrimestral={config.aliquota_reserva_trimestral}
+      trimestralAPagar={trimestralAPagar}
+      reservaAcumulada={reservaAcumulada}
       profit={profit}
       revenueEntries={revenues.data ?? []}
       adCostEntries={adCosts.data ?? []}
