@@ -98,7 +98,7 @@ export function ImportarClient({
   origens: Origem[]
   origemContext: OrigemContext
   produtosNome: { id: string; name: string; is_orderbump: boolean }[]
-  existingOrderRefs: string[]
+  existingOrderRefs: [string, string][]
 }) {
   const isAdmin = useIsAdmin()
   const supabase = createClient()
@@ -110,12 +110,13 @@ export function ImportarClient({
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [globalError, setGlobalError] = useState('')
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ inserted: number; failed: number; affiliatesBackfilled: number; error?: string } | null>(null)
+  const [result, setResult] = useState<{ inserted: number; failed: number; affiliatesBackfilled: number; documentsBackfilled: number; error?: string } | null>(null)
 
   const produtoIdByName = useMemo(() => new Map(produtosNome.map((p) => [p.name, p.id])), [produtosNome])
   const orderbumpProductIds = useMemo(() => new Set(produtosNome.filter((p) => p.is_orderbump).map((p) => p.id)), [produtosNome])
   const origemNomeById = useMemo(() => new Map(origens.map((o) => [o.id, o.name])), [origens])
-  const existingRefsSet = useMemo(() => new Set(existingOrderRefs), [existingOrderRefs])
+  const rowIdByOrderRef = useMemo(() => new Map(existingOrderRefs), [existingOrderRefs])
+  const existingRefsSet = useMemo(() => new Set(rowIdByOrderRef.keys()), [rowIdByOrderRef])
 
   if (!isAdmin) {
     return <p className="text-sm text-gray-500">Você não tem permissão para importar dados.</p>
@@ -317,7 +318,7 @@ export function ImportarClient({
         .from('revenue_entries')
         .upsert(chunk, { onConflict: 'platform,transaction_id', count: 'exact' })
       if (error) {
-        setResult({ inserted, failed: payload.length - inserted, affiliatesBackfilled: 0, error: error.message })
+        setResult({ inserted, failed: payload.length - inserted, affiliatesBackfilled: 0, documentsBackfilled: 0, error: error.message })
         setImporting(false)
         return
       }
@@ -325,42 +326,46 @@ export function ImportarClient({
     }
 
     // Backfill: vendas que já estavam no banco (fora do upsert acima) ganham
-    // o afiliado agora, se tinham e-mail de afiliado no CSV mas foram
-    // importadas antes desse vínculo existir. Payload mínimo (só as colunas
-    // da chave + affiliate_id) — o Postgrest só atualiza as colunas
-    // presentes no corpo, então isso nunca mexe em mais nada da venda, e o
-    // onConflict sempre bate numa linha que já existe (duplicateRows já
-    // confirma isso), nunca insere uma nova.
+    // o afiliado/CPF agora, se o CSV trazia esse dado mas a venda foi
+    // importada antes desse vínculo existir. Update direto por "id" (não
+    // upsert por platform+transaction_id): pra vendas vindas do webhook da
+    // Kiwify, o transaction_id de verdade é o order_id (UUID) — o "ID da
+    // venda" do CSV só bate com raw_payload.order_ref nesse caso — então um
+    // upsert por transaction_id não encontra conflito e tenta inserir uma
+    // linha nova, que falha por faltar coluna obrigatória (confirmado rodando
+    // em produção). Com "id" o update sempre acerta a linha certa. Em
+    // paralelo controlado porque não dá pra batelar valores diferentes por
+    // linha num update só.
+    async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+      let i = 0
+      async function worker() {
+        while (i < items.length) {
+          const item = items[i++]
+          await fn(item)
+        }
+      }
+      await Promise.all(Array.from({ length: limit }, worker))
+    }
+
     let affiliatesBackfilled = 0
-    const backfillPayload = duplicatesComAfiliado
-      .map(r => ({ orderRef: r.orderRef, affiliateId: r.affiliateEmail ? afiliadoIdByEmail.get(r.affiliateEmail.toLowerCase()) ?? null : null }))
-      .filter((r): r is { orderRef: string; affiliateId: string } => !!r.affiliateId)
-    for (let i = 0; i < backfillPayload.length; i += chunkSize) {
-      const chunk = backfillPayload.slice(i, i + chunkSize)
-      const { error, count } = await supabase
-        .from('revenue_entries')
-        .upsert(
-          chunk.map(c => ({ platform: 'kiwify', transaction_id: c.orderRef, affiliate_id: c.affiliateId })),
-          { onConflict: 'platform,transaction_id', count: 'exact' }
-        )
-      if (!error) affiliatesBackfilled += count ?? chunk.length
-    }
+    const backfillAfiliado = duplicatesComAfiliado
+      .map(r => ({ rowId: rowIdByOrderRef.get(r.orderRef), affiliateId: r.affiliateEmail ? afiliadoIdByEmail.get(r.affiliateEmail.toLowerCase()) ?? null : null }))
+      .filter((r): r is { rowId: string; affiliateId: string } => !!r.rowId && !!r.affiliateId)
+    await runWithConcurrency(backfillAfiliado, 20, async (c) => {
+      const { error } = await supabase.from('revenue_entries').update({ affiliate_id: c.affiliateId }).eq('id', c.rowId)
+      if (!error) affiliatesBackfilled++
+    })
 
-    // Mesma lógica pro CPF/CNPJ do cliente (coluna só passou a ser lida
-    // agora) — upsert mínimo separado, só com customer_document, pra não
-    // sobrescrever affiliate_id com null numa linha que não tem afiliado.
-    const documentBackfillPayload = duplicatesComDocumento.map(r => ({ orderRef: r.orderRef, document: r.customerDocument as string }))
-    for (let i = 0; i < documentBackfillPayload.length; i += chunkSize) {
-      const chunk = documentBackfillPayload.slice(i, i + chunkSize)
-      await supabase
-        .from('revenue_entries')
-        .upsert(
-          chunk.map(c => ({ platform: 'kiwify', transaction_id: c.orderRef, customer_document: c.document })),
-          { onConflict: 'platform,transaction_id' }
-        )
-    }
+    let documentsBackfilled = 0
+    const backfillDocumento = duplicatesComDocumento
+      .map(r => ({ rowId: rowIdByOrderRef.get(r.orderRef), document: r.customerDocument }))
+      .filter((r): r is { rowId: string; document: string } => !!r.rowId && !!r.document)
+    await runWithConcurrency(backfillDocumento, 20, async (c) => {
+      const { error } = await supabase.from('revenue_entries').update({ customer_document: c.document }).eq('id', c.rowId)
+      if (!error) documentsBackfilled++
+    })
 
-    setResult({ inserted, failed: 0, affiliatesBackfilled })
+    setResult({ inserted, failed: 0, affiliatesBackfilled, documentsBackfilled })
     setRows([])
     setFileName('')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -479,7 +484,7 @@ export function ImportarClient({
         <div className={`rounded-xl border p-4 text-sm ${result.error ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
           {result.error
             ? `Falha ao importar: ${result.error} (${result.inserted} de ${result.inserted + result.failed} importados antes do erro)`
-            : `${result.inserted} entrada(s) importada(s) com sucesso.${result.affiliatesBackfilled > 0 ? ` ${result.affiliatesBackfilled} venda(s) já existente(s) tiveram o afiliado vinculado agora.` : ''}`}
+            : `${result.inserted} entrada(s) importada(s) com sucesso.${result.affiliatesBackfilled > 0 ? ` ${result.affiliatesBackfilled} venda(s) já existente(s) tiveram o afiliado vinculado agora.` : ''}${result.documentsBackfilled > 0 ? ` ${result.documentsBackfilled} venda(s) já existente(s) tiveram o CPF/CNPJ vinculado agora.` : ''}`}
         </div>
       )}
     </div>

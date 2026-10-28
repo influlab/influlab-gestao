@@ -15,20 +15,26 @@ export default async function ImportarCsvPage() {
     // "order_id" (UUID), não o "ID da venda" (order_ref, código curto) do export CSV.
     // Pra não duplicar, cruzamos contra os dois: transaction_id direto (cobre
     // reimportações de CSV) e raw_payload.order_ref (cobre vendas vindas do webhook).
-    supabase.from('revenue_entries').select('transaction_id, raw_payload').eq('platform', 'kiwify'),
+    // Também carrega o "id" real da linha — necessário pro backfill de afiliado/CPF
+    // abaixo, que teve que passar a fazer update por id (upsert por
+    // platform+transaction_id falha pra vendas de webhook: o "ID da venda" do CSV só
+    // bate com raw_payload.order_ref nesse caso, nunca com o transaction_id de fato).
+    supabase.from('revenue_entries').select('id, transaction_id, raw_payload').eq('platform', 'kiwify'),
   ])
 
-  const existingOrderRefs = Array.from(
-    new Set(
-      (existentes ?? []).flatMap((r) => {
-        const refs: string[] = []
-        if (r.transaction_id) refs.push(r.transaction_id)
-        const orderRef = (r.raw_payload as Record<string, unknown> | null)?.order_ref
-        if (typeof orderRef === 'string') refs.push(orderRef)
-        return refs
-      })
-    )
-  )
+  const existingOrderRefs: [string, string][] = []
+  const seenRefs = new Set<string>()
+  for (const r of existentes ?? []) {
+    if (r.transaction_id && !seenRefs.has(r.transaction_id)) {
+      seenRefs.add(r.transaction_id)
+      existingOrderRefs.push([r.transaction_id, r.id])
+    }
+    const orderRef = (r.raw_payload as Record<string, unknown> | null)?.order_ref
+    if (typeof orderRef === 'string' && !seenRefs.has(orderRef)) {
+      seenRefs.add(orderRef)
+      existingOrderRefs.push([orderRef, r.id])
+    }
+  }
 
   return (
     <ImportarClient
