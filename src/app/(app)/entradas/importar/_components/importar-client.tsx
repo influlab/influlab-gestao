@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useIsAdmin } from '@/components/role-context'
 import { OrigemSelect, type Origem } from '@/components/origem-select'
 import { calcularOrigemId, type OrigemContext } from '@/lib/origem'
+import { resolveAfiliadoId } from '@/lib/afiliados'
 import { parseCSV } from '@/lib/csv'
 import { formatBRL } from '@/lib/utils'
 import { ArrowLeft, Upload, AlertTriangle } from 'lucide-react'
@@ -38,6 +39,8 @@ type ParsedRow = {
   netAmount: number | null
   customerName: string | null
   customerEmail: string | null
+  affiliateName: string | null
+  affiliateEmail: string | null
   date: string | null
   status: string
   origemId: string | null
@@ -106,7 +109,7 @@ export function ImportarClient({
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [globalError, setGlobalError] = useState('')
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ inserted: number; failed: number; error?: string } | null>(null)
+  const [result, setResult] = useState<{ inserted: number; failed: number; affiliatesBackfilled: number; error?: string } | null>(null)
 
   const produtoIdByName = useMemo(() => new Map(produtosNome.map((p) => [p.name, p.id])), [produtosNome])
   const orderbumpProductIds = useMemo(() => new Set(produtosNome.filter((p) => p.is_orderbump).map((p) => p.id)), [produtosNome])
@@ -207,6 +210,8 @@ export function ImportarClient({
           netAmount: net,
           customerName: get('Cliente') || null,
           customerEmail: get('Email') || null,
+          affiliateName: get('Nome do afiliado') || null,
+          affiliateEmail: get('Email do afiliado') || null,
           date,
           status: status ?? statusRaw,
           origemId,
@@ -250,9 +255,31 @@ export function ImportarClient({
   const invalidRows = rows.filter(r => r.errors.length > 0)
 
   async function handleImport() {
-    if (validRows.length === 0) return
+    // Vendas já existentes no banco (duplicate=true) não são reimportadas,
+    // mas podem ter vindo de uma importação anterior a este fix e estar sem
+    // afiliado vinculado — ainda vale reprocessar essas pra fazer o backfill
+    // abaixo, mesmo quando não sobra nenhuma linha nova pra inserir.
+    const duplicatesComAfiliado = duplicateRows.filter(r => r.affiliateEmail)
+    if (validRows.length === 0 && duplicatesComAfiliado.length === 0) return
     setImporting(true)
     setResult(null)
+
+    // O export traz nome/e-mail do afiliado por linha (não o código interno
+    // da Kiwify) — resolve por e-mail (resolveAfiliadoId), mesma lógica usada
+    // pelos webhooks, reaproveitando o afiliado existente em vez de duplicar.
+    // Resolvido uma vez por e-mail único antes de montar o payload, pra não
+    // repetir o upsert pra cada linha do mesmo afiliado.
+    const afiliadoIdByEmail = new Map<string, string | null>()
+    const afiliadosUnicos = new Map<string, string | null>()
+    for (const r of [...validRows, ...duplicatesComAfiliado]) {
+      if (!r.affiliateEmail) continue
+      const key = r.affiliateEmail.toLowerCase()
+      if (!afiliadosUnicos.has(key)) afiliadosUnicos.set(key, r.affiliateName)
+    }
+    for (const [email, name] of afiliadosUnicos) {
+      const id = await resolveAfiliadoId(supabase, 'kiwify', { externalId: null, email, name })
+      afiliadoIdByEmail.set(email, id)
+    }
 
     const payload = validRows.map(r => ({
       platform: 'kiwify',
@@ -272,6 +299,7 @@ export function ImportarClient({
       src: r.tracking.src,
       sck: r.tracking.sck,
       product_id: r.productId,
+      affiliate_id: r.affiliateEmail ? afiliadoIdByEmail.get(r.affiliateEmail.toLowerCase()) ?? null : null,
       origem_id: r.origemId,
       order_item_type: r.orderItemType,
       fonte: 'importacao',
@@ -285,14 +313,36 @@ export function ImportarClient({
         .from('revenue_entries')
         .upsert(chunk, { onConflict: 'platform,transaction_id', count: 'exact' })
       if (error) {
-        setResult({ inserted, failed: payload.length - inserted, error: error.message })
+        setResult({ inserted, failed: payload.length - inserted, affiliatesBackfilled: 0, error: error.message })
         setImporting(false)
         return
       }
       inserted += count ?? chunk.length
     }
 
-    setResult({ inserted, failed: 0 })
+    // Backfill: vendas que já estavam no banco (fora do upsert acima) ganham
+    // o afiliado agora, se tinham e-mail de afiliado no CSV mas foram
+    // importadas antes desse vínculo existir. Payload mínimo (só as colunas
+    // da chave + affiliate_id) — o Postgrest só atualiza as colunas
+    // presentes no corpo, então isso nunca mexe em mais nada da venda, e o
+    // onConflict sempre bate numa linha que já existe (duplicateRows já
+    // confirma isso), nunca insere uma nova.
+    let affiliatesBackfilled = 0
+    const backfillPayload = duplicatesComAfiliado
+      .map(r => ({ orderRef: r.orderRef, affiliateId: r.affiliateEmail ? afiliadoIdByEmail.get(r.affiliateEmail.toLowerCase()) ?? null : null }))
+      .filter((r): r is { orderRef: string; affiliateId: string } => !!r.affiliateId)
+    for (let i = 0; i < backfillPayload.length; i += chunkSize) {
+      const chunk = backfillPayload.slice(i, i + chunkSize)
+      const { error, count } = await supabase
+        .from('revenue_entries')
+        .upsert(
+          chunk.map(c => ({ platform: 'kiwify', transaction_id: c.orderRef, affiliate_id: c.affiliateId })),
+          { onConflict: 'platform,transaction_id', count: 'exact' }
+        )
+      if (!error) affiliatesBackfilled += count ?? chunk.length
+    }
+
+    setResult({ inserted, failed: 0, affiliatesBackfilled })
     setRows([])
     setFileName('')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -324,7 +374,7 @@ export function ImportarClient({
             <code>Preço base do produto</code>/<code>Total com acréscimo</code>, <code>Valor líquido</code>, datas, tracking UTM etc.).
             {' '}Vendas que já estão no sistema (via webhook ou importação anterior) são detectadas e ignoradas automaticamente —
             não duplicam. Origem é calculada por linha (regra de UTM → produto mapeado → origem padrão abaixo).
-            {' '}Afiliados não são vinculados nessa importação (o export não traz o código interno do afiliado, só nome/e-mail).
+            {' '}Afiliado é vinculado por e-mail (colunas &quot;Nome do afiliado&quot;/&quot;Email do afiliado&quot; do export) — reaproveita o afiliado existente quando o e-mail já é conhecido.
           </p>
         </div>
 
@@ -350,12 +400,15 @@ export function ImportarClient({
           <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-gray-600">
               {validRows.length} válida(s)
+              {validRows.filter(r => r.affiliateEmail).length > 0 && (
+                <span className="text-gray-500"> · {validRows.filter(r => r.affiliateEmail).length} com afiliado</span>
+              )}
               {duplicateRows.length > 0 && <span className="text-amber-600"> · {duplicateRows.length} já existe(m) (ignoradas)</span>}
               {invalidRows.length > 0 && <span className="text-red-600"> · {invalidRows.length} com erro</span>}
             </p>
             <button
               onClick={handleImport}
-              disabled={importing || validRows.length === 0}
+              disabled={importing || (validRows.length === 0 && duplicateRows.filter(r => r.affiliateEmail).length === 0)}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               <Upload size={16} /> {importing ? 'Importando...' : `Importar ${validRows.length} registro(s)`}
@@ -372,6 +425,7 @@ export function ImportarClient({
                   <th className="text-right px-3 py-2 font-medium text-gray-600">Líquido</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Status</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Origem</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Afiliado</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Validação</th>
                 </tr>
               </thead>
@@ -385,6 +439,7 @@ export function ImportarClient({
                     <td className="px-3 py-2 text-right">{r.netAmount !== null ? formatBRL(r.netAmount) : '—'}</td>
                     <td className="px-3 py-2">{STATUS_LABELS[r.status] ?? r.status}</td>
                     <td className="px-3 py-2 text-gray-600">{r.origemNome ?? '—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{r.affiliateName ?? '—'}</td>
                     <td className="px-3 py-2">
                       {r.errors.length > 0 ? (
                         <span className="text-red-600 text-xs">{r.errors.join('; ')}</span>
@@ -406,7 +461,7 @@ export function ImportarClient({
         <div className={`rounded-xl border p-4 text-sm ${result.error ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
           {result.error
             ? `Falha ao importar: ${result.error} (${result.inserted} de ${result.inserted + result.failed} importados antes do erro)`
-            : `${result.inserted} entrada(s) importada(s) com sucesso.`}
+            : `${result.inserted} entrada(s) importada(s) com sucesso.${result.affiliatesBackfilled > 0 ? ` ${result.affiliatesBackfilled} venda(s) já existente(s) tiveram o afiliado vinculado agora.` : ''}`}
         </div>
       )}
     </div>
