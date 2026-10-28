@@ -303,21 +303,21 @@ export function DashboardClient({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="text-left py-2 font-medium text-slate-500">Produto</th>
-                      <th className="text-right py-2 font-medium text-slate-500">Qtd vendida</th>
-                      <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
-                      <th className="text-right py-2 font-medium text-slate-500">Receita</th>
-                      <th className="text-right py-2 font-medium text-slate-500">Taxa de conversão</th>
+                      <th className="text-left py-2 pr-4 font-medium text-slate-500">Produto</th>
+                      <th className="text-right py-2 px-4 font-medium text-slate-500 whitespace-nowrap">Qtd vendida</th>
+                      <th className="text-right py-2 px-4 font-medium text-slate-500 whitespace-nowrap">Faturamento</th>
+                      <th className="text-right py-2 px-4 font-medium text-slate-500 whitespace-nowrap">Receita</th>
+                      <th className="text-right py-2 pl-4 font-medium text-slate-500 whitespace-nowrap">Taxa de conversão</th>
                     </tr>
                   </thead>
                   <tbody>
                     {orderBumpStats.map((o) => (
                       <tr key={o.productName} className="border-b border-slate-50 last:border-0">
-                        <td className="py-2 text-slate-900">{o.productName}</td>
-                        <td className="py-2 text-right text-slate-600">{o.count}</td>
-                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.faturamento)}</td>
-                        <td className="py-2 text-right text-slate-600">{formatBRL(o.receita)}</td>
-                        <td className="py-2 text-right text-slate-600">{o.conversionRate.toFixed(1)}%</td>
+                        <td className="py-2 pr-4 text-slate-900">{o.productName}</td>
+                        <td className="py-2 px-4 text-right text-slate-600 whitespace-nowrap">{o.count}</td>
+                        <td className="py-2 px-4 text-right text-slate-900 font-medium whitespace-nowrap">{formatBRL(o.faturamento)}</td>
+                        <td className="py-2 px-4 text-right text-slate-600 whitespace-nowrap">{formatBRL(o.receita)}</td>
+                        <td className="py-2 pl-4 text-right text-slate-600 whitespace-nowrap">{o.conversionRate.toFixed(1)}%</td>
                       </tr>
                     ))}
                   </tbody>
