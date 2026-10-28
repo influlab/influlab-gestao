@@ -57,6 +57,8 @@ export function DashboardClient({
   produtos, origens, afiliados, produtoSelecionado, origemSelecionada, afiliadoSelecionado,
 }: Props) {
   const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
+  const totalProdutosEOrderBump =
+    vendasPorProduto.reduce((s, p) => s + p.revenue, 0) + orderBumpStats.reduce((s, o) => s + o.revenue, 0)
 
   const barData = [
     { name: 'Receita', value: totalRevenue },
@@ -249,106 +251,114 @@ export function DashboardClient({
         </div>
       </div>
 
-      {/* Order bumps */}
+      {/* Vendas por produto + Order bumps */}
+      <div className="mb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-slate-700">Vendas por produto e order bump</h3>
+          <p className="text-sm text-slate-500">
+            Faturamento total (produtos + order bump): <span className="font-semibold text-slate-900">{formatBRL(totalProdutosEOrderBump)}</span>
+          </p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Vendas por produto</h3>
+            {vendasPorProduto.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-2 font-medium text-slate-500">Produto</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendasPorProduto.map((p) => (
+                      <tr key={p.productName} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2 text-slate-900">{p.productName}</td>
+                        <td className="py-2 text-right text-slate-600">{p.count}</td>
+                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Nenhuma venda de produto principal neste período.</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <PackagePlus size={16} className="text-amber-600" />
+              <h3 className="text-sm font-semibold text-slate-700">Order bumps</h3>
+            </div>
+            {orderBumpStats.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-2 font-medium text-slate-500">Produto</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Qtd vendida</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Taxa de conversão</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderBumpStats.map((o) => (
+                      <tr key={o.productName} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2 text-slate-900">{o.productName}</td>
+                        <td className="py-2 text-right text-slate-600">{o.count}</td>
+                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.revenue)}</td>
+                        <td className="py-2 text-right text-slate-600">{o.conversionRate.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-xs text-slate-400 mt-3">
+                  Taxa de conversão = vendas do order bump ÷ pedidos principais aprovados no período. Sem o pedido principal exato vinculado a cada bump, a taxa é relativa ao total de pedidos principais do período, não a um produto específico.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Nenhum order bump vendido neste período.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Vendas por afiliado */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
         <div className="flex items-center gap-2 mb-4">
-          <PackagePlus size={16} className="text-amber-600" />
-          <h3 className="text-sm font-semibold text-slate-700">Order bumps</h3>
+          <Users size={16} className="text-slate-500" />
+          <h3 className="text-sm font-semibold text-slate-700">Vendas por afiliado</h3>
         </div>
-        {orderBumpStats.length > 0 ? (
+        {vendasPorAfiliado.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  <th className="text-left py-2 font-medium text-slate-500">Produto</th>
-                  <th className="text-right py-2 font-medium text-slate-500">Qtd vendida</th>
+                  <th className="text-left py-2 font-medium text-slate-500">Afiliado</th>
+                  <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
                   <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
-                  <th className="text-right py-2 font-medium text-slate-500">Taxa de conversão</th>
                 </tr>
               </thead>
               <tbody>
-                {orderBumpStats.map((o) => (
-                  <tr key={o.productName} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2 text-slate-900">{o.productName}</td>
-                    <td className="py-2 text-right text-slate-600">{o.count}</td>
-                    <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.revenue)}</td>
-                    <td className="py-2 text-right text-slate-600">{o.conversionRate.toFixed(1)}%</td>
+                {vendasPorAfiliado.map((a) => (
+                  <tr key={a.affiliateName} className="border-b border-slate-50 last:border-0">
+                    <td className="py-2 text-slate-900">{a.affiliateName}</td>
+                    <td className="py-2 text-right text-slate-600">{a.count}</td>
+                    <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(a.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p className="text-xs text-slate-400 mt-3">
-              Taxa de conversão = vendas do order bump ÷ pedidos principais aprovados no período. Sem o pedido principal exato vinculado a cada bump, a taxa é relativa ao total de pedidos principais do período, não a um produto específico.
+              Comissão paga ao afiliado ainda não é capturada nos dados (só vendas/faturamento por enquanto).
             </p>
           </div>
         ) : (
-          <p className="text-sm text-slate-400">Nenhum order bump vendido neste período.</p>
+          <p className="text-sm text-slate-400">Nenhuma venda com afiliado vinculado neste período.</p>
         )}
-      </div>
-
-      {/* Vendas por produto e por afiliado */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Vendas por produto</h3>
-          {vendasPorProduto.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left py-2 font-medium text-slate-500">Produto</th>
-                    <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
-                    <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendasPorProduto.map((p) => (
-                    <tr key={p.productName} className="border-b border-slate-50 last:border-0">
-                      <td className="py-2 text-slate-900">{p.productName}</td>
-                      <td className="py-2 text-right text-slate-600">{p.count}</td>
-                      <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(p.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">Nenhuma venda de produto principal neste período.</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Users size={16} className="text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-700">Vendas por afiliado</h3>
-          </div>
-          {vendasPorAfiliado.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left py-2 font-medium text-slate-500">Afiliado</th>
-                    <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
-                    <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendasPorAfiliado.map((a) => (
-                    <tr key={a.affiliateName} className="border-b border-slate-50 last:border-0">
-                      <td className="py-2 text-slate-900">{a.affiliateName}</td>
-                      <td className="py-2 text-right text-slate-600">{a.count}</td>
-                      <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(a.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="text-xs text-slate-400 mt-3">
-                Comissão paga ao afiliado ainda não é capturada nos dados (só vendas/faturamento por enquanto).
-              </p>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">Nenhuma venda com afiliado vinculado neste período.</p>
-          )}
-        </div>
       </div>
 
       {/* Gráfico diário */}
