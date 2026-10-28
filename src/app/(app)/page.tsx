@@ -136,12 +136,14 @@ export default async function DashboardPage({
     .sort((a, b) => b.receita - a.receita)
 
   // Vendas por afiliado — "comissão paga" não é capturada hoje pelo webhook nem
-  // pela importação (só vendas/faturamento/receita, ver PROJETO.md).
+  // pela importação (só vendas/faturamento/receita, ver PROJETO.md). Order bump
+  // entra na soma financeira (é faturamento do afiliado também), mas não conta
+  // como uma venda a mais — é item extra da mesma compra do produto principal.
   const afiliadoGroups = new Map<string, { count: number; faturamento: number; receita: number }>()
   for (const r of approvedFiltradas) {
     if (!r.affiliate_id) continue
     const g = afiliadoGroups.get(r.affiliate_id) ?? { count: 0, faturamento: 0, receita: 0 }
-    g.count += 1
+    if (r.order_item_type === 'principal') g.count += 1
     g.faturamento += r.gross_amount ?? r.net_amount ?? 0
     g.receita += r.net_amount ?? r.gross_amount ?? 0
     afiliadoGroups.set(r.affiliate_id, g)
