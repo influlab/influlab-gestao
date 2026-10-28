@@ -7,11 +7,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const role = cookieStore.get('user_role')?.value ?? 'admin'
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       <Sidebar />
       <RoleProvider role={role}>
         <main className="flex-1 overflow-auto bg-slate-100">
-          <div className="p-8">
+          <div className="p-4 md:p-8">
             {children}
           </div>
         </main>

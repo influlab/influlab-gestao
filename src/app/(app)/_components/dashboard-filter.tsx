@@ -111,7 +111,7 @@ export function DashboardFilter({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col items-stretch md:items-end gap-2 w-full md:w-auto">
       <div className="flex flex-wrap items-center gap-2">
         {presets.map((p) => (
           <button
@@ -127,19 +127,19 @@ export function DashboardFilter({
           </button>
         ))}
 
-        <div className="flex items-center gap-1.5 ml-2">
+        <div className="flex flex-wrap items-center gap-1.5 md:ml-2">
           <input
             type="date"
             value={from}
             onChange={(e) => apply(e.target.value, to)}
-            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
           />
           <span className="text-xs text-slate-400">até</span>
           <input
             type="date"
             value={to}
             onChange={(e) => apply(from, e.target.value)}
-            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
           />
         </div>
       </div>
@@ -148,7 +148,7 @@ export function DashboardFilter({
         <select
           value={produtoSelecionado}
           onChange={(e) => pushParams({ produto: e.target.value })}
-          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:w-auto max-w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todos os produtos</option>
           {produtos.map((p) => (
@@ -158,7 +158,7 @@ export function DashboardFilter({
         <select
           value={origemSelecionada}
           onChange={(e) => pushParams({ origem: e.target.value })}
-          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:w-auto max-w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todas as origens</option>
           {origens.map((o) => (
@@ -168,7 +168,7 @@ export function DashboardFilter({
         <select
           value={afiliadoSelecionado}
           onChange={(e) => pushParams({ afiliado: e.target.value })}
-          className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:w-auto max-w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todos os afiliados</option>
           {afiliados.map((a) => (

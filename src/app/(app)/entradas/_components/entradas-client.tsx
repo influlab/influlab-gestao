@@ -95,7 +95,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Entradas</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -103,7 +103,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
           </p>
         </div>
         {isAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link href="/entradas/importar" className="flex items-center gap-2 border px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
               <Upload size={16} /> Importar CSV
             </Link>
@@ -114,7 +114,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
         )}
       </div>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {['all', ...platforms].map(p => (
           <button key={p} onClick={() => setFilter(p)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === p ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'}`}>
             {p === 'all' ? 'Todas' : platformLabels[p]}

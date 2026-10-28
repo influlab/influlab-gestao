@@ -75,7 +75,7 @@ export function UsuariosClient({ initialUsers }: Props) {
 
   return (
     <div className="bg-white rounded-xl border p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="font-semibold text-gray-900">Usuários</h3>
           <p className="text-sm text-gray-500 mt-0.5">Gerencie quem tem acesso ao sistema</p>

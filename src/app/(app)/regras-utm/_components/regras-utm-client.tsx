@@ -116,7 +116,7 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Regras de UTM</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -190,7 +190,8 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
       )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Prioridade</th>
@@ -228,6 +229,7 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

@@ -347,7 +347,7 @@ export function ImportarClient({
 
       {rows.length > 0 && (
         <div className="bg-white rounded-xl border overflow-hidden mb-6">
-          <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-gray-600">
               {validRows.length} válida(s)
               {duplicateRows.length > 0 && <span className="text-amber-600"> · {duplicateRows.length} já existe(m) (ignoradas)</span>}
