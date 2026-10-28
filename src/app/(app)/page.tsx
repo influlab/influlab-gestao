@@ -92,60 +92,68 @@ export default async function DashboardPage({
   // (nunca veio um payload real com order bump pra saber o vínculo exato), a taxa
   // é relativa ao total de pedidos principais do período, não a um produto
   // principal específico.
+  // Convenção: "faturamento" = valor bruto da venda, "receita" = líquido que
+  // entra na conta (gross_amount/net_amount, respectivamente).
   const approvedPrincipalCount = approvedFiltradas.filter(r => r.order_item_type === 'principal').length
-  const orderBumpGroups = new Map<string, { count: number; revenue: number }>()
+  const orderBumpGroups = new Map<string, { count: number; faturamento: number; receita: number }>()
   for (const r of approvedFiltradas) {
     if (r.order_item_type !== 'orderbump') continue
     const key = r.product_id ?? 'sem-produto'
-    const g = orderBumpGroups.get(key) ?? { count: 0, revenue: 0 }
+    const g = orderBumpGroups.get(key) ?? { count: 0, faturamento: 0, receita: 0 }
     g.count += 1
-    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    g.faturamento += r.gross_amount ?? r.net_amount ?? 0
+    g.receita += r.net_amount ?? r.gross_amount ?? 0
     orderBumpGroups.set(key, g)
   }
   const orderBumpStats = Array.from(orderBumpGroups.entries())
     .map(([productId, g]) => ({
       productName: produtoNomeById.get(productId) ?? 'Produto não identificado',
       count: g.count,
-      revenue: g.revenue,
+      faturamento: g.faturamento,
+      receita: g.receita,
       conversionRate: approvedPrincipalCount > 0 ? (g.count / approvedPrincipalCount) * 100 : 0,
     }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a, b) => b.receita - a.receita)
 
   // Vendas por produto (só principal — order bump já tem a tabela própria acima)
-  const produtoGroups = new Map<string, { count: number; revenue: number }>()
+  const produtoGroups = new Map<string, { count: number; faturamento: number; receita: number }>()
   for (const r of approvedFiltradas) {
     if (r.order_item_type !== 'principal') continue
     const key = r.product_id ?? 'sem-produto'
-    const g = produtoGroups.get(key) ?? { count: 0, revenue: 0 }
+    const g = produtoGroups.get(key) ?? { count: 0, faturamento: 0, receita: 0 }
     g.count += 1
-    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    g.faturamento += r.gross_amount ?? r.net_amount ?? 0
+    g.receita += r.net_amount ?? r.gross_amount ?? 0
     produtoGroups.set(key, g)
   }
   const vendasPorProduto = Array.from(produtoGroups.entries())
     .map(([productId, g]) => ({
       productName: produtoNomeById.get(productId) ?? 'Produto não mapeado',
       count: g.count,
-      revenue: g.revenue,
+      faturamento: g.faturamento,
+      receita: g.receita,
     }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a, b) => b.receita - a.receita)
 
   // Vendas por afiliado — "comissão paga" não é capturada hoje pelo webhook nem
-  // pela importação (só vendas/faturamento, ver PROJETO.md).
-  const afiliadoGroups = new Map<string, { count: number; revenue: number }>()
+  // pela importação (só vendas/faturamento/receita, ver PROJETO.md).
+  const afiliadoGroups = new Map<string, { count: number; faturamento: number; receita: number }>()
   for (const r of approvedFiltradas) {
     if (!r.affiliate_id) continue
-    const g = afiliadoGroups.get(r.affiliate_id) ?? { count: 0, revenue: 0 }
+    const g = afiliadoGroups.get(r.affiliate_id) ?? { count: 0, faturamento: 0, receita: 0 }
     g.count += 1
-    g.revenue += r.net_amount ?? r.gross_amount ?? 0
+    g.faturamento += r.gross_amount ?? r.net_amount ?? 0
+    g.receita += r.net_amount ?? r.gross_amount ?? 0
     afiliadoGroups.set(r.affiliate_id, g)
   }
   const vendasPorAfiliado = Array.from(afiliadoGroups.entries())
     .map(([affiliateId, g]) => ({
       affiliateName: afiliadoNomeById.get(affiliateId) ?? 'Afiliado não identificado',
       count: g.count,
-      revenue: g.revenue,
+      faturamento: g.faturamento,
+      receita: g.receita,
     }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a, b) => b.receita - a.receita)
 
   // Gráfico diário: faturamento aprovado (com filtro extra) × investimento em
   // anúncios (sem filtro extra — ad_costs ainda não tem origem/produto/afiliado

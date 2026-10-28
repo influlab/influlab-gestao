@@ -29,9 +29,9 @@ interface Props {
   aliquotaReservaTrimestral: number
   trimestralAPagar: { value: number; meses: string } | null
   reservaAcumulada: { value: number; meses: string }
-  orderBumpStats: { productName: string; count: number; revenue: number; conversionRate: number }[]
-  vendasPorProduto: { productName: string; count: number; revenue: number }[]
-  vendasPorAfiliado: { affiliateName: string; count: number; revenue: number }[]
+  orderBumpStats: { productName: string; count: number; faturamento: number; receita: number; conversionRate: number }[]
+  vendasPorProduto: { productName: string; count: number; faturamento: number; receita: number }[]
+  vendasPorAfiliado: { affiliateName: string; count: number; faturamento: number; receita: number }[]
   dailyChartData: { date: string; faturamento: number; investimento: number }[]
   temFiltroExtra: boolean
   profit: number
@@ -57,8 +57,10 @@ export function DashboardClient({
   produtos, origens, afiliados, produtoSelecionado, origemSelecionada, afiliadoSelecionado,
 }: Props) {
   const margin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0
-  const totalProdutosEOrderBump =
-    vendasPorProduto.reduce((s, p) => s + p.revenue, 0) + orderBumpStats.reduce((s, o) => s + o.revenue, 0)
+  const faturamentoProdutosEOrderBump =
+    vendasPorProduto.reduce((s, p) => s + p.faturamento, 0) + orderBumpStats.reduce((s, o) => s + o.faturamento, 0)
+  const receitaProdutosEOrderBump =
+    vendasPorProduto.reduce((s, p) => s + p.receita, 0) + orderBumpStats.reduce((s, o) => s + o.receita, 0)
 
   const barData = [
     { name: 'Receita', value: totalRevenue },
@@ -256,7 +258,8 @@ export function DashboardClient({
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-semibold text-slate-700">Vendas por produto e order bump</h3>
           <p className="text-sm text-slate-500">
-            Faturamento total (produtos + order bump): <span className="font-semibold text-slate-900">{formatBRL(totalProdutosEOrderBump)}</span>
+            Faturamento total (produtos + order bump): <span className="font-semibold text-slate-900">{formatBRL(faturamentoProdutosEOrderBump)}</span>
+            {' · '}Receita total: <span className="font-semibold text-slate-900">{formatBRL(receitaProdutosEOrderBump)}</span>
           </p>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -270,6 +273,7 @@ export function DashboardClient({
                       <th className="text-left py-2 font-medium text-slate-500">Produto</th>
                       <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
                       <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Receita</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -277,7 +281,8 @@ export function DashboardClient({
                       <tr key={p.productName} className="border-b border-slate-50 last:border-0">
                         <td className="py-2 text-slate-900">{p.productName}</td>
                         <td className="py-2 text-right text-slate-600">{p.count}</td>
-                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(p.revenue)}</td>
+                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(p.faturamento)}</td>
+                        <td className="py-2 text-right text-slate-600">{formatBRL(p.receita)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -301,6 +306,7 @@ export function DashboardClient({
                       <th className="text-left py-2 font-medium text-slate-500">Produto</th>
                       <th className="text-right py-2 font-medium text-slate-500">Qtd vendida</th>
                       <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                      <th className="text-right py-2 font-medium text-slate-500">Receita</th>
                       <th className="text-right py-2 font-medium text-slate-500">Taxa de conversão</th>
                     </tr>
                   </thead>
@@ -309,7 +315,8 @@ export function DashboardClient({
                       <tr key={o.productName} className="border-b border-slate-50 last:border-0">
                         <td className="py-2 text-slate-900">{o.productName}</td>
                         <td className="py-2 text-right text-slate-600">{o.count}</td>
-                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.revenue)}</td>
+                        <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(o.faturamento)}</td>
+                        <td className="py-2 text-right text-slate-600">{formatBRL(o.receita)}</td>
                         <td className="py-2 text-right text-slate-600">{o.conversionRate.toFixed(1)}%</td>
                       </tr>
                     ))}
@@ -340,6 +347,7 @@ export function DashboardClient({
                   <th className="text-left py-2 font-medium text-slate-500">Afiliado</th>
                   <th className="text-right py-2 font-medium text-slate-500">Qtd</th>
                   <th className="text-right py-2 font-medium text-slate-500">Faturamento</th>
+                  <th className="text-right py-2 font-medium text-slate-500">Receita</th>
                 </tr>
               </thead>
               <tbody>
@@ -347,7 +355,8 @@ export function DashboardClient({
                   <tr key={a.affiliateName} className="border-b border-slate-50 last:border-0">
                     <td className="py-2 text-slate-900">{a.affiliateName}</td>
                     <td className="py-2 text-right text-slate-600">{a.count}</td>
-                    <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(a.revenue)}</td>
+                    <td className="py-2 text-right text-slate-900 font-medium">{formatBRL(a.faturamento)}</td>
+                    <td className="py-2 text-right text-slate-600">{formatBRL(a.receita)}</td>
                   </tr>
                 ))}
               </tbody>
