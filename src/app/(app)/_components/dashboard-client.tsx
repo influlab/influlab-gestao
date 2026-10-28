@@ -116,7 +116,7 @@ export function DashboardClient({
               <TrendingUp size={15} className="text-green-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatBRL(totalRevenue)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(totalRevenue)}</p>
           <p className="text-xs text-slate-400 mt-1">Vendas aprovadas no mês</p>
         </div>
 
@@ -127,7 +127,7 @@ export function DashboardClient({
               <TrendingDown size={15} className="text-red-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatBRL(totalCosts)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(totalCosts)}</p>
           <p className="text-xs text-slate-400 mt-1">Total de despesas</p>
         </div>
 
@@ -138,7 +138,7 @@ export function DashboardClient({
               <DollarSign size={15} className="text-white" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-white">{formatBRL(profit)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-white break-words">{formatBRL(profit)}</p>
           <p className="text-xs text-white/60 mt-1">Resultado líquido</p>
         </div>
 
@@ -149,7 +149,7 @@ export function DashboardClient({
               <Percent size={15} className="text-slate-600" />
             </div>
           </div>
-          <p className={`text-2xl font-bold ${margin >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+          <p className={`text-lg sm:text-2xl font-bold ${margin >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
             {margin.toFixed(1)}%
           </p>
           <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -170,7 +170,7 @@ export function DashboardClient({
               <Receipt size={15} className="text-green-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatBRL(totalGrossRevenue)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(totalGrossRevenue)}</p>
           <p className="text-xs text-slate-400 mt-1">Antes de taxas e comissões</p>
         </div>
 
@@ -181,7 +181,7 @@ export function DashboardClient({
               <Hash size={15} className="text-blue-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{nVendas}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900">{nVendas}</p>
           <p className="text-xs text-slate-400 mt-1">Vendas aprovadas no período</p>
         </div>
 
@@ -192,7 +192,7 @@ export function DashboardClient({
               <Tag size={15} className="text-purple-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatBRL(ticketMedio)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(ticketMedio)}</p>
           <p className="text-xs text-slate-400 mt-1">Faturamento bruto ÷ nº de vendas</p>
         </div>
       </div>
@@ -236,7 +236,7 @@ export function DashboardClient({
                 <Landmark size={15} className="text-teal-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-slate-900">{formatBRL(trimestralAPagar.value)}</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(trimestralAPagar.value)}</p>
             <p className="text-xs text-slate-400 mt-1">{aliquotaReservaTrimestral}% do faturamento de {trimestralAPagar.meses}</p>
           </div>
         )}
@@ -248,7 +248,7 @@ export function DashboardClient({
               <PiggyBank size={15} className="text-cyan-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatBRL(reservaAcumulada.value)}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-900 break-words">{formatBRL(reservaAcumulada.value)}</p>
           <p className="text-xs text-slate-400 mt-1">{aliquotaReservaTrimestral}% do faturamento de {reservaAcumulada.meses} até hoje</p>
         </div>
       </div>
