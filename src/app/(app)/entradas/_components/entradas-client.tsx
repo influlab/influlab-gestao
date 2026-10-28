@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatBRL, formatDate } from '@/lib/utils'
 import { useIsAdmin } from '@/components/role-context'
-import { Plus, Pencil, Trash2, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Upload, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 
 type RevenueEntry = {
   id: string
@@ -27,18 +28,52 @@ const statusColors: Record<string, string> = { approved: 'bg-green-100 text-gree
 const today = new Date().toISOString().split('T')[0]
 const emptyForm = { platform: 'manual', product_name: '', gross_amount: '', net_amount: '', customer_name: '', customer_email: '', transaction_id: '', date: today, status: 'approved' }
 
-export function EntradasClient({ initialData }: { initialData: RevenueEntry[] }) {
+export function EntradasClient({
+  initialData,
+  totalCount,
+  page,
+  pageSize,
+  platform: filter,
+  q: initialQ,
+  totalApproved,
+}: {
+  initialData: RevenueEntry[]
+  totalCount: number
+  page: number
+  pageSize: number
+  platform: string
+  q: string
+  totalApproved: number
+}) {
+  const router = useRouter()
   const [data, setData] = useState(initialData)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<RevenueEntry | null>(null)
-  const [filter, setFilter] = useState('all')
   const [form, setForm] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
+  const [searchInput, setSearchInput] = useState(initialQ)
   const supabase = createClient()
   const isAdmin = useIsAdmin()
 
-  const filtered = filter === 'all' ? data : data.filter(x => x.platform === filter)
-  const total = filtered.filter(x => x.status === 'approved').reduce((s, x) => s + (x.net_amount ?? x.gross_amount), 0)
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+
+  function goTo(newPage: number, overrides: { platform?: string; q?: string } = {}) {
+    const qs = new URLSearchParams()
+    qs.set('page', String(newPage))
+    qs.set('platform', overrides.platform ?? filter)
+    const nextQ = overrides.q ?? initialQ
+    if (nextQ) qs.set('q', nextQ)
+    router.push(`/entradas?${qs.toString()}`)
+  }
+
+  function setFilter(p: string) {
+    goTo(1, { platform: p })
+  }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    goTo(1, { q: searchInput.trim() })
+  }
 
   function openNew() {
     setEditing(null)
@@ -99,7 +134,7 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Entradas</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {filtered.length} registro(s) · Líquido aprovado: <span className="font-semibold text-green-700">{formatBRL(total)}</span>
+            {totalCount} registro(s) · Líquido aprovado: <span className="font-semibold text-green-700">{formatBRL(totalApproved)}</span>
           </p>
         </div>
         {isAdmin && (
@@ -114,12 +149,31 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        {['all', ...platforms].map(p => (
-          <button key={p} onClick={() => setFilter(p)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === p ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'}`}>
-            {p === 'all' ? 'Todas' : platformLabels[p]}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex flex-wrap gap-2">
+          {['all', ...platforms].map(p => (
+            <button key={p} onClick={() => setFilter(p)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filter === p ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'}`}>
+              {p === 'all' ? 'Todas' : platformLabels[p]}
+            </button>
+          ))}
+        </div>
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[220px] max-w-sm">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Buscar por e-mail, ID da venda ou CPF/CNPJ"
+              className="w-full border rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button type="submit" className="px-3 py-1.5 text-sm border rounded-lg text-gray-600 hover:bg-gray-50">Buscar</button>
+          {initialQ && (
+            <button type="button" onClick={() => { setSearchInput(''); goTo(1, { q: '' }) }} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">
+              Limpar
+            </button>
+          )}
+        </form>
       </div>
 
       {showForm && (
@@ -171,7 +225,8 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
       )}
 
       <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Plataforma</th>
@@ -185,8 +240,8 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && <tr><td colSpan={8} className="text-center py-12 text-gray-400">Nenhuma entrada registrada</td></tr>}
-            {filtered.map(item => (
+            {data.length === 0 && <tr><td colSpan={8} className="text-center py-12 text-gray-400">Nenhuma entrada encontrada</td></tr>}
+            {data.map(item => (
               <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-900">{platformLabels[item.platform] ?? item.platform}</td>
                 <td className="px-4 py-3 text-gray-600">{item.product_name ?? '—'}</td>
@@ -211,7 +266,30 @@ export function EntradasClient({ initialData }: { initialData: RevenueEntry[] })
             ))}
           </tbody>
         </table>
+        </div>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-xs text-gray-400">Página {page} de {totalPages}</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => goTo(page - 1)}
+              disabled={page <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white"
+            >
+              <ChevronLeft size={14} /> Anterior
+            </button>
+            <button
+              onClick={() => goTo(page + 1)}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white"
+            >
+              Próxima <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

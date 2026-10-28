@@ -39,6 +39,7 @@ type ParsedRow = {
   netAmount: number | null
   customerName: string | null
   customerEmail: string | null
+  customerDocument: string | null
   affiliateName: string | null
   affiliateEmail: string | null
   date: string | null
@@ -210,6 +211,7 @@ export function ImportarClient({
           netAmount: net,
           customerName: get('Cliente') || null,
           customerEmail: get('Email') || null,
+          customerDocument: get('CPF / CNPJ') || null,
           affiliateName: get('Nome do afiliado') || null,
           affiliateEmail: get('Email do afiliado') || null,
           date,
@@ -260,7 +262,8 @@ export function ImportarClient({
     // afiliado vinculado — ainda vale reprocessar essas pra fazer o backfill
     // abaixo, mesmo quando não sobra nenhuma linha nova pra inserir.
     const duplicatesComAfiliado = duplicateRows.filter(r => r.affiliateEmail)
-    if (validRows.length === 0 && duplicatesComAfiliado.length === 0) return
+    const duplicatesComDocumento = duplicateRows.filter(r => r.customerDocument)
+    if (validRows.length === 0 && duplicatesComAfiliado.length === 0 && duplicatesComDocumento.length === 0) return
     setImporting(true)
     setResult(null)
 
@@ -289,6 +292,7 @@ export function ImportarClient({
       net_amount: r.netAmount,
       customer_name: r.customerName,
       customer_email: r.customerEmail,
+      customer_document: r.customerDocument,
       date: r.date,
       status: r.status,
       utm_source: r.tracking.utm_source,
@@ -340,6 +344,20 @@ export function ImportarClient({
           { onConflict: 'platform,transaction_id', count: 'exact' }
         )
       if (!error) affiliatesBackfilled += count ?? chunk.length
+    }
+
+    // Mesma lógica pro CPF/CNPJ do cliente (coluna só passou a ser lida
+    // agora) — upsert mínimo separado, só com customer_document, pra não
+    // sobrescrever affiliate_id com null numa linha que não tem afiliado.
+    const documentBackfillPayload = duplicatesComDocumento.map(r => ({ orderRef: r.orderRef, document: r.customerDocument as string }))
+    for (let i = 0; i < documentBackfillPayload.length; i += chunkSize) {
+      const chunk = documentBackfillPayload.slice(i, i + chunkSize)
+      await supabase
+        .from('revenue_entries')
+        .upsert(
+          chunk.map(c => ({ platform: 'kiwify', transaction_id: c.orderRef, customer_document: c.document })),
+          { onConflict: 'platform,transaction_id' }
+        )
     }
 
     setResult({ inserted, failed: 0, affiliatesBackfilled })
@@ -408,7 +426,7 @@ export function ImportarClient({
             </p>
             <button
               onClick={handleImport}
-              disabled={importing || (validRows.length === 0 && duplicateRows.filter(r => r.affiliateEmail).length === 0)}
+              disabled={importing || (validRows.length === 0 && duplicateRows.every(r => !r.affiliateEmail && !r.customerDocument))}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               <Upload size={16} /> {importing ? 'Importando...' : `Importar ${validRows.length} registro(s)`}

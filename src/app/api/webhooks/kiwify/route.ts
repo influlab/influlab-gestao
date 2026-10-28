@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
     net_amount: commissions?.my_commission ? Number(commissions.my_commission) / 100 : null,
     customer_name: (customer?.full_name as string) ?? null,
     customer_email: customerEmail,
+    customer_document: (customer?.CPF as string) || (customer?.cnpj as string) || null,
     date,
     status,
     raw_payload: payload,

@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
     net_amount: netCents !== null ? netCents / 100 : null,
     customer_name: (customer?.name as string) ?? null,
     customer_email: customerEmail,
+    customer_document: (customer?.cpf as string) || (customer?.cnpj as string) || null,
     date,
     status,
     raw_payload: payload,
