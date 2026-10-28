@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
+import { calcularOrigemId, loadOrigemContext, origemDoPedidoPrincipal } from '@/lib/origem'
 import { resolveAfiliadoId } from '@/lib/afiliados'
 
 export async function GET() {
@@ -163,7 +163,13 @@ export async function POST(request: NextRequest) {
     sck: naoInformado(tracking?.sck),
   }
   const origemContext = await loadOrigemContext(supabase)
-  const origemId = calcularOrigemId(tracking_, productId, affiliateId, origemContext)
+  let origemId = calcularOrigemId(tracking_, productId, affiliateId, origemContext)
+
+  const customerEmail = (customer?.email as string) ?? null
+  if (orderItemType === 'orderbump') {
+    const origemDoPrincipal = await origemDoPedidoPrincipal(supabase, 'ticto', customerEmail)
+    if (origemDoPrincipal !== undefined) origemId = origemDoPrincipal
+  }
 
   // paid_amount/item.amount são em centavos (confirmado: producer.amount bate
   // com producer.cms, ex. 11052 centavos == "110.52" de comissão).
@@ -177,7 +183,7 @@ export async function POST(request: NextRequest) {
     gross_amount: grossCents / 100,
     net_amount: netCents !== null ? netCents / 100 : null,
     customer_name: (customer?.name as string) ?? null,
-    customer_email: (customer?.email as string) ?? null,
+    customer_email: customerEmail,
     date,
     status,
     raw_payload: payload,

@@ -39,13 +39,39 @@ export function RegrasUtmClient({ initialData, origens }: { initialData: RegraUt
       const ctx = await loadOrigemContext(supabase)
       const { data: entries } = await supabase
         .from('revenue_entries')
-        .select('id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, src, sck, product_id, affiliate_id, origem_id')
+        .select('id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, src, sck, product_id, affiliate_id, origem_id, order_item_type, customer_email, platform, date')
 
-      const updates = (entries ?? [])
-        .map((entry) => ({ id: entry.id, novaOrigemId: calcularOrigemId(entry, entry.product_id, entry.affiliate_id, ctx), origemAtual: entry.origem_id }))
+      const recalculadas = (entries ?? []).map((entry) => ({
+        ...entry,
+        novaOrigemId: calcularOrigemId(entry, entry.product_id, entry.affiliate_id, ctx) as string | null,
+      }))
+
+      // Order bump não tem tráfego/UTM próprio — veio "de carona" na mesma
+      // compra do produto principal — então herda a origem (já recalculada)
+      // dele em vez da calculada isoladamente. Sem id de pedido compartilhado
+      // no banco, o proxy é e-mail do cliente + mesma plataforma + mesmo dia
+      // (mesma aproximação usada na importação de CSV).
+      const principaisPorChave = new Map<string, string | null>()
+      for (const e of recalculadas) {
+        if (e.order_item_type !== 'principal' || !e.customer_email || !e.date) continue
+        const key = `${e.platform}|${e.customer_email.toLowerCase()}|${e.date}`
+        if (!principaisPorChave.has(key)) principaisPorChave.set(key, e.novaOrigemId)
+      }
+      for (const e of recalculadas) {
+        if (e.order_item_type !== 'orderbump' || !e.customer_email || !e.date) continue
+        const key = `${e.platform}|${e.customer_email.toLowerCase()}|${e.date}`
+        if (principaisPorChave.has(key)) e.novaOrigemId = principaisPorChave.get(key) ?? null
+      }
+
+      const updates = recalculadas
+        .map((e) => ({ id: e.id, novaOrigemId: e.novaOrigemId, origemAtual: e.origem_id }))
         .filter((e) => e.novaOrigemId !== e.origemAtual)
 
-      await Promise.all(updates.map((u) => supabase.from('revenue_entries').update({ origem_id: u.novaOrigemId }).eq('id', u.id)))
+      const chunkSize = 200
+      for (let i = 0; i < updates.length; i += chunkSize) {
+        const chunk = updates.slice(i, i + chunkSize)
+        await Promise.all(chunk.map((u) => supabase.from('revenue_entries').update({ origem_id: u.novaOrigemId }).eq('id', u.id)))
+      }
 
       alert(`${updates.length} venda(s) tiveram a origem recalculada.`)
     } finally {

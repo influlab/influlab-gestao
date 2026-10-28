@@ -1,5 +1,37 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+// Order bump é vendido junto com o produto principal no mesmo checkout, mas a
+// Kiwify/Ticto disparam um webhook separado pra cada item, cada um com seu
+// próprio order_id/order_ref e sem nenhum campo que ligue os dois (confirmado
+// com payloads reais: mesmo e-mail, mesmo instante, order_id diferente). Como
+// o bump não tem tráfego/UTM próprio — veio "de carona" na mesma venda — a
+// origem dele deve ser a mesma do produto principal da mesma compra, não a
+// calculada isoladamente (que cairia no default_origem_id do produto bump ou
+// em "Não identificado"). Sem um id de pedido compartilhado, o proxy usado é
+// e-mail do cliente + venda principal mais recente da mesma plataforma dentro
+// de uma janela de alguns minutos.
+const JANELA_MESMO_PEDIDO_MS = 5 * 60 * 1000
+
+export async function origemDoPedidoPrincipal(
+  supabase: SupabaseClient,
+  platform: string,
+  customerEmail: string | null
+): Promise<string | null | undefined> {
+  if (!customerEmail) return undefined
+  const desde = new Date(Date.now() - JANELA_MESMO_PEDIDO_MS).toISOString()
+  const { data } = await supabase
+    .from('revenue_entries')
+    .select('origem_id, created_at')
+    .eq('platform', platform)
+    .ilike('customer_email', customerEmail)
+    .eq('order_item_type', 'principal')
+    .gte('created_at', desde)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (!data || data.length === 0) return undefined
+  return data[0].origem_id
+}
+
 // Prioridade de cálculo da origem de uma venda (dashboard-kiwify-spec.md):
 // 1. Regra de UTM mais específica (menor "priority" vence)
 // 2. Mapeamento por produto (default_origem_id)

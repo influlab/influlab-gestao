@@ -217,6 +217,29 @@ export function ImportarClient({
           tracking,
         }
       })
+
+      // Order bump veio "de carona" na mesma compra do produto principal — não
+      // tem tráfego próprio, então herda a origem do principal em vez da
+      // calculada isoladamente (que cairia no padrão do produto bump ou em
+      // "Não identificado"). O CSV não traz um id de pedido compartilhado entre
+      // os dois, então o proxy é e-mail do cliente + mesmo dia (mesma
+      // aproximação usada no webhook, mas por dia em vez de por minutos, já
+      // que o export não guarda o horário da venda).
+      const origemPrincipalPorGrupo = new Map<string, string | null>()
+      for (const r of parsed) {
+        if (r.orderItemType !== 'principal' || !r.customerEmail || !r.date) continue
+        const key = `${r.customerEmail.toLowerCase()}|${r.date}`
+        if (!origemPrincipalPorGrupo.has(key)) origemPrincipalPorGrupo.set(key, r.origemId)
+      }
+      for (const r of parsed) {
+        if (r.orderItemType !== 'orderbump' || !r.customerEmail || !r.date) continue
+        const key = `${r.customerEmail.toLowerCase()}|${r.date}`
+        if (origemPrincipalPorGrupo.has(key)) {
+          r.origemId = origemPrincipalPorGrupo.get(key) ?? null
+          r.origemNome = r.origemId ? origemNomeById.get(r.origemId) ?? null : null
+        }
+      }
+
       setRows(parsed)
     }
     reader.readAsText(file, 'utf-8')

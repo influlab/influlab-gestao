@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { calcularOrigemId, loadOrigemContext } from '@/lib/origem'
+import { calcularOrigemId, loadOrigemContext, origemDoPedidoPrincipal } from '@/lib/origem'
 import { resolveAfiliadoId } from '@/lib/afiliados'
 
 export async function GET() {
@@ -161,7 +161,13 @@ export async function POST(request: NextRequest) {
     sck: (tracking?.sck as string) ?? null,
   }
   const origemContext = await loadOrigemContext(supabase)
-  const origemId = calcularOrigemId(tracking_, productId, affiliateId, origemContext)
+  let origemId = calcularOrigemId(tracking_, productId, affiliateId, origemContext)
+
+  const customerEmail = (customer?.email as string) ?? null
+  if (orderItemType === 'orderbump') {
+    const origemDoPrincipal = await origemDoPedidoPrincipal(supabase, 'kiwify', customerEmail)
+    if (origemDoPrincipal !== undefined) origemId = origemDoPrincipal
+  }
 
   const revenueData = {
     platform: 'kiwify',
@@ -170,7 +176,7 @@ export async function POST(request: NextRequest) {
     gross_amount: (Number(commissions?.charge_amount) || 0) / 100,
     net_amount: commissions?.my_commission ? Number(commissions.my_commission) / 100 : null,
     customer_name: (customer?.full_name as string) ?? null,
-    customer_email: (customer?.email as string) ?? null,
+    customer_email: customerEmail,
     date,
     status,
     raw_payload: payload,
