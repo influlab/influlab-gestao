@@ -47,6 +47,15 @@ export function EntradasClient({
 }) {
   const router = useRouter()
   const [data, setData] = useState(initialData)
+  // initialData só muda quando o servidor refaz a busca (filtro/busca/paginação
+  // via router.push) — como o componente não desmonta entre navegações, o
+  // useState acima não se atualiza sozinho com a nova prop. Ajuste durante a
+  // renderização (não em useEffect) é o padrão recomendado pra isso.
+  const [prevInitialData, setPrevInitialData] = useState(initialData)
+  if (initialData !== prevInitialData) {
+    setPrevInitialData(initialData)
+    setData(initialData)
+  }
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<RevenueEntry | null>(null)
   const [form, setForm] = useState(emptyForm)
