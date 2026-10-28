@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   let status: string
   if (eventType === 'order_approved' || orderStatus === 'paid' || orderStatus === 'complete') {
     status = 'approved'
-  } else if (eventType === 'order_refunded' || orderStatus === 'refunded') {
+  } else if (eventType === 'order_refunded' || orderStatus === 'refunded' || orderStatus === 'chargedback') {
     status = 'refunded'
   } else {
     return finish(new Response(`Ignored: eventType=${eventType} orderStatus=${orderStatus}`, { status: 200 }))
@@ -189,12 +189,32 @@ export async function POST(request: NextRequest) {
     fonte: 'webhook',
   }
 
+  // Vendas importadas via CSV usam o "ID da venda" (order_ref, código curto)
+  // como transaction_id, não o order_id (UUID) que o webhook sempre usa — não
+  // existe campo que ligue os dois nos dados da importação. Sem checar isso,
+  // um reembolso/chargeback de uma venda que só existia via importação não
+  // encontraria a linha original pelo UUID e criaria uma linha nova, deixando
+  // a venda original presa como "approved" pra sempre. Promove a linha
+  // existente (acha por order_ref, atualiza pra transaction_id = UUID) em vez
+  // de inserir uma nova quando isso acontece.
+  const orderRef = order.order_ref as string | undefined
+  let importedRowId: string | null = null
+  if (orderRef) {
+    const { data: existingImported } = await supabase
+      .from('revenue_entries')
+      .select('id')
+      .eq('platform', 'kiwify')
+      .eq('transaction_id', orderRef)
+      .limit(1)
+    importedRowId = existingImported?.[0]?.id ?? null
+  }
+
   // Idempotência: o mesmo pedido pode chegar várias vezes (aprovado, depois
   // reembolsado, ou reenviado pela Kiwify) — upsert por transaction_id em vez
   // de duplicar (trava garantida pela constraint unique (platform, transaction_id)).
-  const { error } = await supabase
-    .from('revenue_entries')
-    .upsert(revenueData, { onConflict: 'platform,transaction_id' })
+  const { error } = importedRowId
+    ? await supabase.from('revenue_entries').update(revenueData).eq('id', importedRowId)
+    : await supabase.from('revenue_entries').upsert(revenueData, { onConflict: 'platform,transaction_id' })
 
   if (error) {
     console.error('[kiwify webhook] DB error:', JSON.stringify(error))
